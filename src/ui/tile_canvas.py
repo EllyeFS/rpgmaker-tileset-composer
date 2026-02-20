@@ -2,8 +2,8 @@
 
 from typing import Dict, Tuple, Optional
 
-from PySide6.QtWidgets import QWidget, QScrollArea, QVBoxLayout
-from PySide6.QtCore import Qt, Signal, QPoint
+from PySide6.QtWidgets import QWidget, QScrollArea, QVBoxLayout, QApplication
+from PySide6.QtCore import Qt, Signal, QPoint, QMimeData
 from PySide6.QtGui import QPainter, QColor, QPen, QBrush, QPixmap, QDrag
 
 from ..models.tileset_types import TilesetType, TILESET_TYPES
@@ -19,6 +19,12 @@ def _get_drag_unit() -> Optional[TileUnit]:
     """Get the currently dragged unit from the palette module."""
     from .tile_palette import get_current_drag_unit
     return get_current_drag_unit()
+
+
+def _set_drag_unit(unit: Optional[TileUnit]):
+    """Set the currently dragged unit in the palette module."""
+    from .tile_palette import set_current_drag_unit
+    set_current_drag_unit(unit)
 
 
 class TileCanvasWidget(QWidget):
@@ -59,6 +65,10 @@ class TileCanvasWidget(QWidget):
         # Current drop hover position (for visual feedback)
         self._drop_hover_pos: Optional[Tuple[int, int]] = None
         self._drop_hover_unit: Optional[TileUnit] = None
+        
+        # Drag tracking for moving placed units
+        self._drag_start_pos: Optional[QPoint] = None
+        self._dragging_from_canvas: bool = False
         
         # Enable drop acceptance
         self.setAcceptDrops(True)
@@ -167,7 +177,7 @@ class TileCanvasWidget(QWidget):
             painter.drawPixmap(px, py, tile.pixmap)
     
     def mousePressEvent(self, event):
-        """Handle mouse click to select a grid cell."""
+        """Handle mouse click to select a grid cell or start drag."""
         if event.button() == Qt.MouseButton.LeftButton:
             pos = event.position().toPoint()
             grid_x = pos.x() // TILE_SIZE
@@ -175,7 +185,99 @@ class TileCanvasWidget(QWidget):
             
             # Ensure within bounds
             if 0 <= grid_x < self.grid_width and 0 <= grid_y < self.grid_height:
-                self.cell_clicked.emit(grid_x, grid_y)
+                # Check if there's a unit at this position
+                unit_info = self._find_unit_at_cell(grid_x, grid_y)
+                if unit_info:
+                    # Start tracking for potential drag
+                    self._drag_start_pos = pos
+                else:
+                    self._drag_start_pos = None
+                    self.cell_clicked.emit(grid_x, grid_y)
+    
+    def mouseMoveEvent(self, event):
+        """Handle mouse move to start dragging placed units."""
+        if not (event.buttons() & Qt.MouseButton.LeftButton):
+            return
+        if self._drag_start_pos is None:
+            return
+        
+        # Check if we've moved far enough to start a drag
+        distance = (event.position().toPoint() - self._drag_start_pos).manhattanLength()
+        if distance < QApplication.startDragDistance():
+            return
+        
+        # Find the unit at the drag start position
+        start_grid_x = self._drag_start_pos.x() // TILE_SIZE
+        start_grid_y = self._drag_start_pos.y() // TILE_SIZE
+        unit_info = self._find_unit_at_cell(start_grid_x, start_grid_y)
+        
+        if not unit_info:
+            self._drag_start_pos = None
+            return
+        
+        unit_pos, unit = unit_info
+        
+        # Remove the unit from canvas before starting drag
+        del self._placed_units[unit_pos]
+        self.update()
+        
+        # Create drag pixmap
+        drag_pixmap = self._create_unit_pixmap(unit)
+        
+        # Create drag object
+        drag = QDrag(self)
+        mime_data = QMimeData()
+        mime_data.setData(TILE_UNIT_MIME_TYPE, b"")
+        drag.setMimeData(mime_data)
+        drag.setPixmap(drag_pixmap)
+        drag.setHotSpot(QPoint(TILE_SIZE // 2, TILE_SIZE // 2))
+        
+        # Store unit in module-level variable
+        self._dragging_from_canvas = True
+        _set_drag_unit(unit)
+        
+        # Execute drag
+        result = drag.exec(Qt.DropAction.MoveAction | Qt.DropAction.CopyAction)
+        
+        # If drag was not accepted (dropped outside), unit is discarded
+        # If dropped on canvas, dropEvent will have placed it
+        _set_drag_unit(None)
+        self._dragging_from_canvas = False
+        self._drag_start_pos = None
+    
+    def _find_unit_at_cell(self, grid_x: int, grid_y: int) -> Optional[Tuple[Tuple[int, int], TileUnit]]:
+        """Find the unit (if any) that covers the given grid cell.
+        
+        Returns:
+            Tuple of ((unit_x, unit_y), unit) or None if no unit at cell.
+        """
+        for (ux, uy), unit in self._placed_units.items():
+            if (ux <= grid_x < ux + unit.grid_width and
+                uy <= grid_y < uy + unit.grid_height):
+                return ((ux, uy), unit)
+        return None
+    
+    def _create_unit_pixmap(self, unit: TileUnit) -> QPixmap:
+        """Create a pixmap showing the complete unit."""
+        width = unit.grid_width * TILE_SIZE
+        height = unit.grid_height * TILE_SIZE
+        
+        pixmap = QPixmap(width, height)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        
+        painter = QPainter(pixmap)
+        
+        if unit.tiles:
+            min_x = min(t.x for t in unit.tiles)
+            min_y = min(t.y for t in unit.tiles)
+            
+            for tile in unit.tiles:
+                rel_x = tile.x - min_x
+                rel_y = tile.y - min_y
+                painter.drawPixmap(rel_x, rel_y, tile.pixmap)
+        
+        painter.end()
+        return pixmap
     
     def dragEnterEvent(self, event):
         """Accept drag if it contains a tile unit."""
