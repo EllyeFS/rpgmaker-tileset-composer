@@ -480,3 +480,238 @@ class TestDropValidation:
         assert a5_positions != a3_positions
         assert len(a5_positions) > 0
         assert len(a3_positions) > 0
+
+
+class TestCanvasMultiselect:
+    """Tests for canvas multiselect functionality."""
+    
+    def _create_mock_unit(self, grid_width: int = 1, grid_height: int = 1,
+                          grid_x: int = 0, grid_y: int = 0) -> TileUnit:
+        """Create a mock tile unit for testing."""
+        tiles = []
+        index = 0
+        for dy in range(grid_height):
+            for dx in range(grid_width):
+                img = QImage(TILE_SIZE, TILE_SIZE, QImage.Format.Format_ARGB32)
+                img.fill(Qt.GlobalColor.red)
+                tile = Tile(
+                    source_path="/test/mock.png",
+                    source_index=index,
+                    x=(grid_x + dx) * TILE_SIZE,
+                    y=(grid_y + dy) * TILE_SIZE,
+                    image=img,
+                )
+                tiles.append(tile)
+                index += 1
+        
+        unit = TileUnit(
+            grid_width=grid_width,
+            grid_height=grid_height,
+            tiles=tiles,
+            grid_x=grid_x,
+            grid_y=grid_y,
+        )
+        for tile in tiles:
+            tile.unit = unit
+        return unit
+    
+    def test_selection_starts_empty(self, qtbot):
+        """Canvas selection list starts empty."""
+        canvas = TileCanvasWidget()
+        qtbot.addWidget(canvas)
+        
+        assert canvas._selected_positions == []
+    
+    def test_selection_cleared_on_tileset_change(self, qtbot):
+        """Selection is cleared when tileset type changes."""
+        canvas = TileCanvasWidget()
+        qtbot.addWidget(canvas)
+        
+        # Place and select a unit
+        unit = self._create_mock_unit(1, 1)
+        canvas.place_unit(unit, 0, 0)
+        canvas._selected_positions = [(0, 0)]
+        
+        # Change tileset type
+        canvas.set_tileset_type(TILESET_TYPES["A3"])
+        
+        assert canvas._selected_positions == []
+    
+    def test_selection_cleared_on_clear(self, qtbot):
+        """Selection is cleared when canvas is cleared."""
+        canvas = TileCanvasWidget()
+        qtbot.addWidget(canvas)
+        
+        # Place and select a unit
+        unit = self._create_mock_unit(1, 1)
+        canvas.place_unit(unit, 0, 0)
+        canvas._selected_positions = [(0, 0)]
+        
+        # Clear canvas
+        canvas.clear()
+        
+        assert canvas._selected_positions == []
+    
+    def test_click_unselected_unit_selects_it(self, qtbot):
+        """Clicking unselected unit selects only that unit."""
+        canvas = TileCanvasWidget()
+        qtbot.addWidget(canvas)
+        
+        # Place two units
+        unit1 = self._create_mock_unit(1, 1)
+        unit2 = self._create_mock_unit(1, 1)
+        canvas.place_unit(unit1, 0, 0)
+        canvas.place_unit(unit2, 1, 0)
+        
+        # Select unit1 first
+        canvas._selected_positions = [(0, 0)]
+        
+        # Simulate click on unit2 without modifiers
+        from PySide6.QtCore import QPointF
+        from PySide6.QtGui import QMouseEvent
+        from PySide6.QtCore import QEvent
+        
+        # Create mouse press event at grid position (1, 0) = pixel (48, 24)
+        pos = QPointF(TILE_SIZE + 10, 10)
+        event = QMouseEvent(
+            QEvent.Type.MouseButtonPress,
+            pos,
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier
+        )
+        canvas.mousePressEvent(event)
+        
+        # Should select only unit2
+        assert canvas._selected_positions == [(1, 0)]
+    
+    def test_click_already_selected_keeps_selection(self, qtbot):
+        """Clicking already-selected unit keeps current selection."""
+        canvas = TileCanvasWidget()
+        qtbot.addWidget(canvas)
+        
+        # Place two units
+        unit1 = self._create_mock_unit(1, 1)
+        unit2 = self._create_mock_unit(1, 1)
+        canvas.place_unit(unit1, 0, 0)
+        canvas.place_unit(unit2, 1, 0)
+        
+        # Select both units
+        canvas._selected_positions = [(0, 0), (1, 0)]
+        
+        # Simulate click on unit1 (already selected) without modifiers
+        from PySide6.QtCore import QPointF
+        from PySide6.QtGui import QMouseEvent
+        from PySide6.QtCore import QEvent
+        
+        pos = QPointF(10, 10)
+        event = QMouseEvent(
+            QEvent.Type.MouseButtonPress,
+            pos,
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier
+        )
+        canvas.mousePressEvent(event)
+        
+        # Should keep both selected
+        assert len(canvas._selected_positions) == 2
+        assert (0, 0) in canvas._selected_positions
+        assert (1, 0) in canvas._selected_positions
+    
+    def test_ctrl_click_toggles_selection(self, qtbot):
+        """Ctrl+click toggles unit selection."""
+        canvas = TileCanvasWidget()
+        qtbot.addWidget(canvas)
+        
+        # Place two units
+        unit1 = self._create_mock_unit(1, 1)
+        unit2 = self._create_mock_unit(1, 1)
+        canvas.place_unit(unit1, 0, 0)
+        canvas.place_unit(unit2, 1, 0)
+        
+        # Select unit1
+        canvas._selected_positions = [(0, 0)]
+        
+        # Simulate Ctrl+click on unit2
+        from PySide6.QtCore import QPointF
+        from PySide6.QtGui import QMouseEvent
+        from PySide6.QtCore import QEvent
+        
+        pos = QPointF(TILE_SIZE + 10, 10)
+        event = QMouseEvent(
+            QEvent.Type.MouseButtonPress,
+            pos,
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.ControlModifier
+        )
+        canvas.mousePressEvent(event)
+        
+        # Should have both selected
+        assert len(canvas._selected_positions) == 2
+        assert (0, 0) in canvas._selected_positions
+        assert (1, 0) in canvas._selected_positions
+    
+    def test_ctrl_click_deselects_if_already_selected(self, qtbot):
+        """Ctrl+click on selected unit removes it from selection."""
+        canvas = TileCanvasWidget()
+        qtbot.addWidget(canvas)
+        
+        # Place two units
+        unit1 = self._create_mock_unit(1, 1)
+        unit2 = self._create_mock_unit(1, 1)
+        canvas.place_unit(unit1, 0, 0)
+        canvas.place_unit(unit2, 1, 0)
+        
+        # Select both units
+        canvas._selected_positions = [(0, 0), (1, 0)]
+        
+        # Simulate Ctrl+click on unit1
+        from PySide6.QtCore import QPointF
+        from PySide6.QtGui import QMouseEvent
+        from PySide6.QtCore import QEvent
+        
+        pos = QPointF(10, 10)
+        event = QMouseEvent(
+            QEvent.Type.MouseButtonPress,
+            pos,
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.ControlModifier
+        )
+        canvas.mousePressEvent(event)
+        
+        # Should have only unit2 selected
+        assert canvas._selected_positions == [(1, 0)]
+    
+    def test_click_empty_space_clears_selection(self, qtbot):
+        """Clicking empty space clears selection."""
+        canvas = TileCanvasWidget()
+        qtbot.addWidget(canvas)
+        
+        # Place a unit
+        unit = self._create_mock_unit(1, 1)
+        canvas.place_unit(unit, 0, 0)
+        
+        # Select it
+        canvas._selected_positions = [(0, 0)]
+        
+        # Simulate click on empty space
+        from PySide6.QtCore import QPointF
+        from PySide6.QtGui import QMouseEvent
+        from PySide6.QtCore import QEvent
+        
+        pos = QPointF(TILE_SIZE * 2 + 10, 10)  # Empty position
+        event = QMouseEvent(
+            QEvent.Type.MouseButtonPress,
+            pos,
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier
+        )
+        canvas.mousePressEvent(event)
+        
+        # Selection should be cleared
+        assert canvas._selected_positions == []
+

@@ -231,3 +231,191 @@ class TestTilePaletteEdgeComputation:
         assert unit1_buttons[0]._edge_bottom is True
         assert unit1_buttons[0]._edge_left is True
         assert unit1_buttons[0]._edge_right is True
+
+
+class TestTilePaletteMultiselect:
+    """Tests for palette multiselect functionality."""
+    
+    def _create_mock_unit(self, grid_width: int, grid_height: int, 
+                          source_path: str = "/test/mock.png",
+                          grid_x: int = 0, grid_y: int = 0) -> TileUnit:
+        """Create a mock tile unit with correct tile positions."""
+        tiles = []
+        index = 0
+        for dy in range(grid_height):
+            for dx in range(grid_width):
+                img = QImage(TILE_SIZE, TILE_SIZE, QImage.Format.Format_ARGB32)
+                img.fill(Qt.GlobalColor.blue)
+                tile = Tile(
+                    source_path=source_path,
+                    source_index=index,
+                    x=(grid_x + dx) * TILE_SIZE,
+                    y=(grid_y + dy) * TILE_SIZE,
+                    image=img,
+                )
+                tiles.append(tile)
+                index += 1
+        
+        unit = TileUnit(
+            grid_width=grid_width,
+            grid_height=grid_height,
+            tiles=tiles,
+            grid_x=grid_x,
+            grid_y=grid_y,
+        )
+        for tile in tiles:
+            tile.unit = unit
+        return unit
+    
+    def test_single_click_selects_unit(self, qtbot):
+        """Single click without modifiers selects one unit."""
+        palette = TilePalette()
+        qtbot.addWidget(palette)
+        
+        unit1 = self._create_mock_unit(1, 1)
+        unit2 = self._create_mock_unit(1, 1, grid_x=1)
+        palette.set_units([unit1, unit2])
+        
+        # Simulate click on first unit without modifiers
+        palette._on_tile_clicked(unit1.tiles[0], Qt.KeyboardModifier.NoModifier)
+        
+        assert len(palette._selected_units) == 1
+        assert palette._selected_units[0] is unit1
+    
+    def test_ctrl_click_adds_to_selection_same_source(self, qtbot):
+        """Ctrl+click adds unit to selection if same source."""
+        palette = TilePalette()
+        qtbot.addWidget(palette)
+        
+        unit1 = self._create_mock_unit(1, 1, grid_x=0)
+        unit2 = self._create_mock_unit(1, 1, grid_x=1)
+        palette.set_units([unit1, unit2])
+        
+        # First click - select unit1
+        palette._on_tile_clicked(unit1.tiles[0], Qt.KeyboardModifier.NoModifier)
+        assert len(palette._selected_units) == 1
+        
+        # Ctrl+click unit2 - should add to selection
+        palette._on_tile_clicked(unit2.tiles[0], Qt.KeyboardModifier.ControlModifier)
+        assert len(palette._selected_units) == 2
+        assert unit1 in palette._selected_units
+        assert unit2 in palette._selected_units
+    
+    def test_ctrl_click_toggles_off(self, qtbot):
+        """Ctrl+click on selected unit removes it from selection."""
+        palette = TilePalette()
+        qtbot.addWidget(palette)
+        
+        unit1 = self._create_mock_unit(1, 1, grid_x=0)
+        unit2 = self._create_mock_unit(1, 1, grid_x=1)
+        palette.set_units([unit1, unit2])
+        
+        # Select both units
+        palette._on_tile_clicked(unit1.tiles[0], Qt.KeyboardModifier.NoModifier)
+        palette._on_tile_clicked(unit2.tiles[0], Qt.KeyboardModifier.ControlModifier)
+        assert len(palette._selected_units) == 2
+        
+        # Ctrl+click unit1 again - should remove it
+        palette._on_tile_clicked(unit1.tiles[0], Qt.KeyboardModifier.ControlModifier)
+        assert len(palette._selected_units) == 1
+        assert palette._selected_units[0] is unit2
+    
+    def test_ctrl_click_different_source_replaces_selection(self, qtbot):
+        """Ctrl+click on different source replaces selection."""
+        palette = TilePalette()
+        qtbot.addWidget(palette)
+        
+        unit1 = self._create_mock_unit(1, 1, source_path="/test/source1.png")
+        unit2 = self._create_mock_unit(1, 1, source_path="/test/source2.png")
+        palette.set_units([unit1, unit2])
+        
+        # Select unit1
+        palette._on_tile_clicked(unit1.tiles[0], Qt.KeyboardModifier.NoModifier)
+        assert len(palette._selected_units) == 1
+        
+        # Ctrl+click unit2 from different source - should replace
+        palette._on_tile_clicked(unit2.tiles[0], Qt.KeyboardModifier.ControlModifier)
+        assert len(palette._selected_units) == 1
+        assert palette._selected_units[0] is unit2
+    
+    def test_click_already_selected_keeps_selection(self, qtbot):
+        """Clicking an already-selected unit keeps current selection."""
+        palette = TilePalette()
+        qtbot.addWidget(palette)
+        
+        unit1 = self._create_mock_unit(1, 1, grid_x=0)
+        unit2 = self._create_mock_unit(1, 1, grid_x=1)
+        palette.set_units([unit1, unit2])
+        
+        # Select both units
+        palette._on_tile_clicked(unit1.tiles[0], Qt.KeyboardModifier.NoModifier)
+        palette._on_tile_clicked(unit2.tiles[0], Qt.KeyboardModifier.ControlModifier)
+        assert len(palette._selected_units) == 2
+        
+        # Click unit1 again (already selected) - should keep both selected
+        palette._on_tile_clicked(unit1.tiles[0], Qt.KeyboardModifier.NoModifier)
+        assert len(palette._selected_units) == 2
+    
+    def test_get_draggable_units_filters_1x1_only(self, qtbot):
+        """get_draggable_units returns only 1x1 units."""
+        palette = TilePalette()
+        qtbot.addWidget(palette)
+        
+        unit_1x1_a = self._create_mock_unit(1, 1, grid_x=0)
+        unit_1x1_b = self._create_mock_unit(1, 1, grid_x=1)
+        unit_2x2 = self._create_mock_unit(2, 2, grid_x=2)
+        palette.set_units([unit_1x1_a, unit_1x1_b, unit_2x2])
+        
+        # Select all three units
+        palette._selected_units = [unit_1x1_a, unit_1x1_b, unit_2x2]
+        
+        # Get draggable units for a 1x1 unit
+        draggable = palette.get_draggable_units(unit_1x1_a)
+        
+        # Should only include the 1x1 units
+        assert len(draggable) == 2
+        assert unit_1x1_a in draggable
+        assert unit_1x1_b in draggable
+        assert unit_2x2 not in draggable
+    
+    def test_get_draggable_units_non_1x1_returns_self(self, qtbot):
+        """get_draggable_units with non-1x1 clicked unit returns only that unit."""
+        palette = TilePalette()
+        qtbot.addWidget(palette)
+        
+        unit_1x1 = self._create_mock_unit(1, 1, grid_x=0)
+        unit_2x2 = self._create_mock_unit(2, 2, grid_x=1)
+        palette.set_units([unit_1x1, unit_2x2])
+        
+        # Select both units
+        palette._selected_units = [unit_1x1, unit_2x2]
+        
+        # Get draggable units for the 2x2 unit
+        draggable = palette.get_draggable_units(unit_2x2)
+        
+        # Should only return the clicked 2x2 unit
+        assert len(draggable) == 1
+        assert draggable[0] is unit_2x2
+    
+    def test_get_draggable_units_same_source_only(self, qtbot):
+        """get_draggable_units filters to same source."""
+        palette = TilePalette()
+        qtbot.addWidget(palette)
+        
+        unit_a1 = self._create_mock_unit(1, 1, source_path="/test/a.png", grid_x=0)
+        unit_a2 = self._create_mock_unit(1, 1, source_path="/test/a.png", grid_x=1)
+        unit_b1 = self._create_mock_unit(1, 1, source_path="/test/b.png", grid_x=2)
+        palette.set_units([unit_a1, unit_a2, unit_b1])
+        
+        # Select all three units
+        palette._selected_units = [unit_a1, unit_a2, unit_b1]
+        
+        # Get draggable units for first unit from source A
+        draggable = palette.get_draggable_units(unit_a1)
+        
+        # Should only include units from source A
+        assert len(draggable) == 2
+        assert unit_a1 in draggable
+        assert unit_a2 in draggable
+        assert unit_b1 not in draggable
+
