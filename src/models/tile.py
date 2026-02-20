@@ -1,20 +1,28 @@
 """
-Tile model representing an extracted tile/unit from a source image.
+Tile model representing an extracted 48×48 tile from a source image.
+
+All tiles are 48×48 pixels. Larger units (autotiles) are represented
+as multiple Tiles grouped by a TileUnit.
 """
 
-from dataclasses import dataclass
-from typing import Optional
+from dataclasses import dataclass, field
+from typing import Optional, TYPE_CHECKING
 
 from PySide6.QtGui import QImage, QPixmap
+
+from ..utils.constants import TILE_SIZE
+
+if TYPE_CHECKING:
+    from .tile_unit import TileUnit
 
 
 @dataclass
 class Tile:
     """
-    Represents a single tile or unit extracted from a source image.
+    Represents a single 48×48 pixel tile extracted from a source image.
     
-    For simple grids (A5, B-E): a 48×48 pixel tile.
-    For autotiles (A1-A4): a larger unit (e.g., 96×144 for 2×3).
+    All tiles are exactly 48×48 pixels. For larger units (autotiles),
+    multiple Tiles are grouped together by a TileUnit.
     """
     # Source information
     source_path: str          # Path to the source image file
@@ -23,14 +31,25 @@ class Tile:
     # Position in source image (pixels)
     x: int
     y: int
-    width: int
-    height: int
     
-    # The actual image data
+    # The actual image data (always 48×48)
     image: QImage
     
+    # Reference to parent unit (None until grouped)
+    unit: Optional["TileUnit"] = field(default=None, repr=False, compare=False)
+    
     # Cached pixmap for display (created on demand)
-    _pixmap: Optional[QPixmap] = None
+    _pixmap: Optional[QPixmap] = field(default=None, repr=False, compare=False)
+    
+    @property
+    def width(self) -> int:
+        """Tile width is always TILE_SIZE (48)."""
+        return TILE_SIZE
+    
+    @property
+    def height(self) -> int:
+        """Tile height is always TILE_SIZE (48)."""
+        return TILE_SIZE
     
     @property
     def pixmap(self) -> QPixmap:

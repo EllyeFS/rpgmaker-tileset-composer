@@ -1,8 +1,11 @@
 """
 Tile palette widget for displaying and selecting source tiles.
+
+Tiles are always displayed on a 48×48 grid. Larger units (autotiles)
+are displayed as multiple cells that select together as a group.
 """
 
-from typing import List, Optional
+from typing import List, Optional, Dict
 
 from PySide6.QtWidgets import (
     QWidget,
@@ -17,6 +20,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPainter, QPen, QColor
 
 from ..models.tile import Tile
+from ..models.tile_unit import TileUnit
 from ..utils.constants import TILE_SIZE
 
 
@@ -24,7 +28,8 @@ class TileButton(QFrame):
     """
     A clickable tile display widget.
     
-    Shows a single tile and emits a signal when clicked.
+    Shows a single 48×48 tile and emits a signal when clicked.
+    The signal includes the tile's parent unit for group selection.
     """
     
     clicked = Signal(Tile)
@@ -34,8 +39,8 @@ class TileButton(QFrame):
         self.tile = tile
         self._selected = False
         
-        # Set fixed size based on tile dimensions
-        self.setFixedSize(tile.width + 2, tile.height + 2)  # +2 for border
+        # All tiles are 48×48, plus border
+        self.setFixedSize(TILE_SIZE + 2, TILE_SIZE + 2)
         
         # Styling
         self.setFrameStyle(QFrame.Shape.Box | QFrame.Shadow.Plain)
@@ -65,8 +70,8 @@ class TileButton(QFrame):
         painter = QPainter(self)
         
         # Draw the tile pixmap centered (accounting for border)
-        x = (self.width() - self.tile.width) // 2
-        y = (self.height() - self.tile.height) // 2
+        x = (self.width() - TILE_SIZE) // 2
+        y = (self.height() - TILE_SIZE) // 2
         painter.drawPixmap(x, y, self.tile.pixmap)
         
         # Draw selection highlight
@@ -84,18 +89,22 @@ class TilePalette(QWidget):
     """
     A scrollable palette displaying tiles from source images.
     
-    Tiles are displayed in a grid, grouped by source file.
-    Emits tile_selected signal when a tile is clicked.
+    Tiles are displayed in a 48×48 grid, preserving their source layout.
+    Clicking a tile selects its entire unit (for multi-tile autotiles).
     """
     
+    # Emits the selected unit when a tile is clicked
+    unit_selected = Signal(TileUnit)
+    
+    # Legacy signal for backward compatibility
     tile_selected = Signal(Tile)
     
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
         
-        self._tiles: List[Tile] = []
+        self._units: List[TileUnit] = []
         self._tile_buttons: List[TileButton] = []
-        self._selected_tile: Optional[Tile] = None
+        self._selected_unit: Optional[TileUnit] = None
         self._columns = 8  # Number of columns in the grid
         
         self._setup_ui()
@@ -112,13 +121,13 @@ class TilePalette(QWidget):
         # Scroll area for tiles
         self._scroll_area = QScrollArea()
         self._scroll_area.setWidgetResizable(True)
-        self._scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         layout.addWidget(self._scroll_area)
         
         # Container for tile grid
         self._tile_container = QWidget()
         self._tile_layout = QGridLayout(self._tile_container)
-        self._tile_layout.setSpacing(4)
+        self._tile_layout.setSpacing(1)
         self._tile_layout.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
         self._scroll_area.setWidget(self._tile_container)
         
@@ -128,32 +137,87 @@ class TilePalette(QWidget):
         self._placeholder.setStyleSheet("color: #888; padding: 20px;")
         self._tile_layout.addWidget(self._placeholder, 0, 0)
     
-    def set_tiles(self, tiles: List[Tile]):
-        """Set the tiles to display in the palette (replaces existing)."""
-        self._tiles = tiles
-        self._selected_tile = None
+    def set_units(self, units: List[TileUnit]):
+        """Set the units to display in the palette (replaces existing)."""
+        self._units = units
+        self._selected_unit = None
         self._rebuild_grid()
     
-    def prepend_tiles(self, tiles: List[Tile]):
-        """Add tiles to the top of the palette (keeps existing, skips duplicates).
+    def prepend_units(self, units: List[TileUnit]):
+        """Add units to the top of the palette (keeps existing, skips duplicates).
         
-        Tiles from source images already in the palette are not added again.
+        Units from source images already in the palette are not added again.
         """
         # Get set of source paths already in palette
-        existing_sources = {t.source_path for t in self._tiles}
+        existing_sources = {u.source_path for u in self._units}
         
-        # Filter out tiles from sources that are already loaded
-        new_tiles = [t for t in tiles if t.source_path not in existing_sources]
+        # Filter out units from sources that are already loaded
+        new_units = [u for u in units if u.source_path not in existing_sources]
         
-        if new_tiles:
-            self._tiles = new_tiles + self._tiles
-            self._selected_tile = None
+        if new_units:
+            self._units = new_units + self._units
+            self._selected_unit = None
             self._rebuild_grid()
     
+    # Legacy methods for backward compatibility
+    def set_tiles(self, tiles: List[Tile]):
+        """Set tiles to display (legacy method - converts to units)."""
+        # Group tiles into units if they don't have one
+        units: List[TileUnit] = []
+        seen_units: set = set()
+        
+        for tile in tiles:
+            if tile.unit is not None:
+                if id(tile.unit) not in seen_units:
+                    units.append(tile.unit)
+                    seen_units.add(id(tile.unit))
+            else:
+                # Create a 1×1 unit for orphan tiles
+                unit = TileUnit(
+                    grid_width=1,
+                    grid_height=1,
+                    tiles=[tile],
+                    grid_x=tile.x // TILE_SIZE,
+                    grid_y=tile.y // TILE_SIZE,
+                )
+                tile.unit = unit
+                units.append(unit)
+        
+        self.set_units(units)
+    
+    def prepend_tiles(self, tiles: List[Tile]):
+        """Add tiles to the top of the palette (legacy method)."""
+        # Group tiles into units
+        units: List[TileUnit] = []
+        seen_units: set = set()
+        
+        for tile in tiles:
+            if tile.unit is not None:
+                if id(tile.unit) not in seen_units:
+                    units.append(tile.unit)
+                    seen_units.add(id(tile.unit))
+            else:
+                unit = TileUnit(
+                    grid_width=1,
+                    grid_height=1,
+                    tiles=[tile],
+                    grid_x=tile.x // TILE_SIZE,
+                    grid_y=tile.y // TILE_SIZE,
+                )
+                tile.unit = unit
+                units.append(unit)
+        
+        self.prepend_units(units)
+    
+    @property
+    def _tiles(self) -> List[Tile]:
+        """Get all tiles from all units (legacy property)."""
+        return [tile for unit in self._units for tile in unit.tiles]
+    
     def clear(self):
-        """Clear all tiles from the palette."""
-        self._tiles = []
-        self._selected_tile = None
+        """Clear all units from the palette."""
+        self._units = []
+        self._selected_unit = None
         self._rebuild_grid()
     
     def _rebuild_grid(self):
@@ -169,7 +233,7 @@ class TilePalette(QWidget):
             if item.widget() and item.widget() != self._placeholder:
                 item.widget().deleteLater()
         
-        if not self._tiles:
+        if not self._units:
             # Show placeholder
             self._placeholder.setParent(self._tile_container)
             self._tile_layout.addWidget(self._placeholder, 0, 0)
@@ -179,64 +243,88 @@ class TilePalette(QWidget):
         # Hide placeholder
         self._placeholder.setParent(None)
         
-        # Group tiles by source file
-        tiles_by_source: dict[str, List[Tile]] = {}
-        for tile in self._tiles:
-            source = tile.source_name
-            if source not in tiles_by_source:
-                tiles_by_source[source] = []
-            tiles_by_source[source].append(tile)
+        # Group units by source file
+        units_by_source: Dict[str, List[TileUnit]] = {}
+        for unit in self._units:
+            source = unit.source_name
+            if source not in units_by_source:
+                units_by_source[source] = []
+            units_by_source[source].append(unit)
         
-        row = 0
-        for source_name, source_tiles in tiles_by_source.items():
+        layout_row = 0
+        for source_name, source_units in units_by_source.items():
             # Add source file label
             source_label = QLabel(source_name)
             source_label.setStyleSheet(
                 "font-weight: bold; color: #666; padding: 5px 0; "
                 "border-bottom: 1px solid #ccc;"
             )
-            self._tile_layout.addWidget(source_label, row, 0, 1, self._columns)
-            row += 1
+            self._tile_layout.addWidget(source_label, layout_row, 0, 1, 16)  # Span up to 16 columns
+            layout_row += 1
             
-            # Add tiles in grid
-            col = 0
-            for tile in source_tiles:
-                btn = TileButton(tile)
-                btn.clicked.connect(self._on_tile_clicked)
-                self._tile_buttons.append(btn)
-                self._tile_layout.addWidget(btn, row, col)
-                
-                col += 1
-                if col >= self._columns:
-                    col = 0
-                    row += 1
+            # Calculate grid bounds for this source
+            max_col = 0
+            max_row = 0
+            for unit in source_units:
+                for tile in unit.tiles:
+                    tile_col = tile.x // TILE_SIZE
+                    tile_row = tile.y // TILE_SIZE
+                    if tile_col >= max_col:
+                        max_col = tile_col + 1
+                    if tile_row >= max_row:
+                        max_row = tile_row + 1
             
-            # Move to next row after each source group
-            if col > 0:
-                row += 1
+            # Display tiles at their original positions (x, y based)
+            for unit in source_units:
+                for tile in unit.tiles:
+                    display_col = tile.x // TILE_SIZE
+                    display_row = tile.y // TILE_SIZE
+                    
+                    btn = TileButton(tile)
+                    btn.clicked.connect(self._on_tile_clicked)
+                    self._tile_buttons.append(btn)
+                    self._tile_layout.addWidget(btn, layout_row + display_row, display_col)
+            
+            layout_row += max_row
         
         # Add stretch at bottom
-        self._tile_layout.setRowStretch(row, 1)
+        self._tile_layout.setRowStretch(layout_row, 1)
         
-        # Update header
-        self._header_label.setText(f"Tile Palette ({len(self._tiles)} tiles)")
+        # Update header with tile count
+        total_tiles = sum(len(unit.tiles) for unit in self._units)
+        self._header_label.setText(f"Tile Palette ({total_tiles} tiles, {len(self._units)} units)")
     
     def _on_tile_clicked(self, tile: Tile):
-        """Handle tile button click."""
-        # Update selection state
-        for btn in self._tile_buttons:
-            btn.selected = (btn.tile is tile)
+        """Handle tile button click - selects the entire unit."""
+        unit = tile.unit
+        if unit is None:
+            return
         
-        self._selected_tile = tile
+        # Update selection state for all tile buttons
+        for btn in self._tile_buttons:
+            btn.selected = (btn.tile.unit is unit)
+        
+        self._selected_unit = unit
+        self.unit_selected.emit(unit)
+        
+        # Also emit legacy signal with the clicked tile
         self.tile_selected.emit(tile)
     
     @property
+    def selected_unit(self) -> Optional[TileUnit]:
+        """Get the currently selected unit."""
+        return self._selected_unit
+    
+    @property
     def selected_tile(self) -> Optional[Tile]:
-        """Get the currently selected tile."""
-        return self._selected_tile
+        """Get a tile from the selected unit (legacy property)."""
+        if self._selected_unit and self._selected_unit.tiles:
+            return self._selected_unit.tiles[0]
+        return None
     
     def set_columns(self, columns: int):
         """Set the number of columns in the tile grid."""
         if columns > 0 and columns != self._columns:
             self._columns = columns
             self._rebuild_grid()
+

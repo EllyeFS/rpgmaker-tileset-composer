@@ -4,6 +4,7 @@ import pytest
 from PySide6.QtGui import QImage, QPixmap
 
 from src.models.tile import Tile
+from src.models.tile_unit import TileUnit
 
 
 class TestTile:
@@ -24,8 +25,6 @@ class TestTile:
             source_index=0,
             x=0,
             y=0,
-            width=48,
-            height=48,
             image=sample_image,
         )
     
@@ -35,6 +34,7 @@ class TestTile:
         assert sample_tile.source_index == 0
         assert sample_tile.x == 0
         assert sample_tile.y == 0
+        # width and height are now computed properties (always 48)
         assert sample_tile.width == 48
         assert sample_tile.height == 48
     
@@ -47,7 +47,7 @@ class TestTile:
         tile = Tile(
             source_path="/path/to/some/folder/tileset.png",
             source_index=0,
-            x=0, y=0, width=48, height=48,
+            x=0, y=0,
             image=sample_image,
         )
         assert tile.source_name == "tileset.png"
@@ -65,3 +65,85 @@ class TestTile:
         pixmap2 = sample_tile.pixmap
         # Should be the exact same object
         assert pixmap1 is pixmap2
+    
+    def test_tile_unit_reference(self, sample_image):
+        """Tile can reference its parent TileUnit."""
+        tile = Tile(
+            source_path="/test/image.png",
+            source_index=0,
+            x=0, y=0,
+            image=sample_image,
+        )
+        assert tile.unit is None
+        
+        unit = TileUnit(grid_width=1, grid_height=1, tiles=[tile])
+        tile.unit = unit
+        
+        assert tile.unit is unit
+
+
+class TestTileUnit:
+    """Tests for TileUnit model."""
+    
+    @pytest.fixture
+    def sample_image(self, qapp):
+        """Create a simple 48x48 test image."""
+        image = QImage(48, 48, QImage.Format.Format_ARGB32)
+        image.fill(0xFF00FF00)  # Green
+        return image
+    
+    def test_single_tile_unit(self, sample_image):
+        """A 1×1 unit contains a single tile."""
+        tile = Tile(
+            source_path="/test/image.png",
+            source_index=0,
+            x=0, y=0,
+            image=sample_image,
+        )
+        unit = TileUnit(grid_width=1, grid_height=1, tiles=[tile])
+        
+        assert unit.is_single_tile
+        assert len(unit.tiles) == 1
+        assert unit.pixel_width == 48
+        assert unit.pixel_height == 48
+    
+    def test_2x2_unit(self, sample_image):
+        """A 2×2 unit contains 4 tiles arranged in a grid."""
+        tiles = [
+            Tile(source_path="/test.png", source_index=i, x=(i % 2) * 48, y=(i // 2) * 48, image=sample_image)
+            for i in range(4)
+        ]
+        unit = TileUnit(grid_width=2, grid_height=2, tiles=tiles)
+        
+        assert not unit.is_single_tile
+        assert len(unit.tiles) == 4
+        assert unit.pixel_width == 96
+        assert unit.pixel_height == 96
+    
+    def test_get_tile_at(self, sample_image):
+        """get_tile_at returns the correct tile for a local position."""
+        tiles = [
+            Tile(source_path="/test.png", source_index=i, x=(i % 2) * 48, y=(i // 2) * 48, image=sample_image)
+            for i in range(4)
+        ]
+        unit = TileUnit(grid_width=2, grid_height=2, tiles=tiles)
+        
+        # Row-major order: [0,0]=0, [1,0]=1, [0,1]=2, [1,1]=3
+        assert unit.get_tile_at(0, 0) is tiles[0]
+        assert unit.get_tile_at(1, 0) is tiles[1]
+        assert unit.get_tile_at(0, 1) is tiles[2]
+        assert unit.get_tile_at(1, 1) is tiles[3]
+        assert unit.get_tile_at(2, 0) is None  # Out of bounds
+    
+    def test_source_path_from_tiles(self, sample_image):
+        """Unit source_path comes from its first tile."""
+        tile = Tile(
+            source_path="/my/tileset.png",
+            source_index=0,
+            x=0, y=0,
+            image=sample_image,
+        )
+        unit = TileUnit(grid_width=1, grid_height=1, tiles=[tile])
+        
+        assert unit.source_path == "/my/tileset.png"
+        assert unit.source_name == "tileset.png"

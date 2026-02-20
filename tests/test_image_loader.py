@@ -74,83 +74,26 @@ class TestImageLoaderSimpleGrid:
         indices = [t.source_index for t in tiles]
         assert indices == list(range(16))  # 4x4 = 16 tiles
 
-
-class TestImageLoaderBCDEOrdering:
-    """Tests for BCDE-style half-column ordering."""
-    
-    @pytest.fixture
-    def temp_dir(self, qapp):
-        """Create a temporary directory for test images."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            yield tmpdir
-    
-    def _create_test_image(self, path: str, width: int, height: int):
-        """Create a test PNG image."""
-        image = QImage(width, height, QImage.Format.Format_ARGB32)
-        image.fill(0xFF0000FF)  # Blue
-        image.save(path, "PNG")
-        return path
-    
-    def test_bcde_16_column_ordering(self, temp_dir):
-        """16-column images should extract left half first, then right half."""
+    def test_16_column_image_row_order(self, temp_dir):
+        """16-column images should use standard row-by-row order."""
         # 16 cols × 2 rows = 32 tiles
         path = self._create_test_image(
-            os.path.join(temp_dir, "bcde.png"), 768, 96
+            os.path.join(temp_dir, "wide.png"), 768, 96
         )
         tiles = ImageLoader.load_tiles_from_image(path)
         
         assert len(tiles) == 32
         
-        # First 16 tiles should be left half (cols 0-7, both rows)
-        # Row 0, cols 0-7
-        for i in range(8):
+        # Should be row-by-row order
+        # Row 0: tiles 0-15
+        for i in range(16):
             assert tiles[i].x == i * 48, f"Tile {i} x mismatch"
             assert tiles[i].y == 0, f"Tile {i} y mismatch"
         
-        # Row 1, cols 0-7
-        for i in range(8):
-            assert tiles[8 + i].x == i * 48, f"Tile {8+i} x mismatch"
-            assert tiles[8 + i].y == 48, f"Tile {8+i} y mismatch"
-        
-        # Next 16 tiles should be right half (cols 8-15, both rows)
-        # Row 0, cols 8-15
-        for i in range(8):
-            assert tiles[16 + i].x == (8 + i) * 48, f"Tile {16+i} x mismatch"
-            assert tiles[16 + i].y == 0, f"Tile {16+i} y mismatch"
-        
-        # Row 1, cols 8-15
-        for i in range(8):
-            assert tiles[24 + i].x == (8 + i) * 48, f"Tile {24+i} x mismatch"
-            assert tiles[24 + i].y == 48, f"Tile {24+i} y mismatch"
-    
-    def test_full_bcde_image_256_tiles(self, temp_dir):
-        """Full 768x768 BCDE image should yield 256 tiles in correct order."""
-        path = self._create_test_image(
-            os.path.join(temp_dir, "full_bcde.png"), 768, 768
-        )
-        tiles = ImageLoader.load_tiles_from_image(path)
-        
-        assert len(tiles) == 256
-        
-        # First 128 tiles are left half, next 128 are right half
-        # Verify first tile of each half
-        assert tiles[0].x == 0  # First tile of left half
-        assert tiles[128].x == 8 * 48  # First tile of right half (col 8)
-    
-    def test_non_16_column_uses_row_order(self, temp_dir):
-        """Images with != 16 columns should use standard row order."""
-        # 8 cols × 2 rows = 16 tiles
-        path = self._create_test_image(
-            os.path.join(temp_dir, "a5_style.png"), 384, 96
-        )
-        tiles = ImageLoader.load_tiles_from_image(path)
-        
-        assert len(tiles) == 16
-        
-        # Should be row-by-row order
-        assert (tiles[0].x, tiles[0].y) == (0, 0)
-        assert (tiles[7].x, tiles[7].y) == (7 * 48, 0)
-        assert (tiles[8].x, tiles[8].y) == (0, 48)
+        # Row 1: tiles 16-31
+        for i in range(16):
+            assert tiles[16 + i].x == i * 48, f"Tile {16+i} x mismatch"
+            assert tiles[16 + i].y == 48, f"Tile {16+i} y mismatch"
 
 
 class TestImageLoaderFolder:
@@ -224,17 +167,34 @@ class TestImageLoaderWithTilesetType:
         # All tiles should be 48x48
         assert all(t.width == 48 and t.height == 48 for t in tiles)
     
-    def test_extract_with_a3_type(self, temp_dir):
-        """Extracting with A3 type should yield 2x2 units."""
+    def test_extract_with_a3_type_returns_tiles(self, temp_dir):
+        """Extracting A3 with load_tiles_from_image returns individual 48x48 tiles."""
         path = self._create_test_image(
             os.path.join(temp_dir, "a3.png"), 768, 384
         )
         tileset_type = TILESET_TYPES["A3"]
         tiles = ImageLoader.load_tiles_from_image(path, tileset_type)
         
-        assert len(tiles) == 32
-        # All units should be 96x96 (2x2 tiles)
-        assert all(t.width == 96 and t.height == 96 for t in tiles)
+        # A3 is 16x8 = 128 tiles, grouped into 32 units of 2x2
+        assert len(tiles) == 128
+        # All tiles should be 48x48
+        assert all(t.width == 48 and t.height == 48 for t in tiles)
+    
+    def test_extract_with_a3_type_returns_units(self, temp_dir):
+        """Extracting A3 with load_units_from_image returns 2x2 units."""
+        path = self._create_test_image(
+            os.path.join(temp_dir, "a3.png"), 768, 384
+        )
+        tileset_type = TILESET_TYPES["A3"]
+        units = ImageLoader.load_units_from_image(path, tileset_type)
+        
+        # A3 has 32 units (8 cols × 4 rows)
+        assert len(units) == 32
+        # All units should be 2×2 tiles (96×96 pixels)
+        assert all(u.grid_width == 2 and u.grid_height == 2 for u in units)
+        assert all(u.pixel_width == 96 and u.pixel_height == 96 for u in units)
+        # Each unit should have 4 tiles
+        assert all(len(u.tiles) == 4 for u in units)
 
 
 class TestA3AutoDetection:
@@ -251,42 +211,56 @@ class TestA3AutoDetection:
         image.save(path, "PNG")
         return path
     
-    def test_768x384_auto_detects_as_a3(self, temp_dir):
+    def test_768x384_auto_detects_as_a3_units(self, temp_dir):
         """An image with A3 dimensions should auto-detect as A3 format."""
         path = self._create_test_image(
             os.path.join(temp_dir, "auto_a3.png"), 768, 384
         )
-        # Load without specifying tileset type
-        tiles = ImageLoader.load_tiles_from_image(path)
+        # Load without specifying tileset type - should auto-detect
+        units = ImageLoader.load_units_from_image(path)
         
-        # Should have 32 units (A3 format: 8 cols × 4 rows)
-        assert len(tiles) == 32
+        # Should have 32 units (A3 format: 8 cols × 4 rows of 2×2 units)
+        assert len(units) == 32
         
-        # All units should be 96×96 (2×2 tiles)
-        assert all(t.width == 96 and t.height == 96 for t in tiles)
+        # All units should be 2×2 tiles (96×96 pixels)
+        assert all(u.grid_width == 2 and u.grid_height == 2 for u in units)
     
-    def test_a3_tiles_have_correct_positions(self, temp_dir):
-        """A3 tiles should have correct x,y positions in 96px increments."""
+    def test_768x384_returns_tiles_for_legacy(self, temp_dir):
+        """load_tiles_from_image returns individual tiles for A3."""
         path = self._create_test_image(
-            os.path.join(temp_dir, "a3_positions.png"), 768, 384
+            os.path.join(temp_dir, "auto_a3.png"), 768, 384
         )
         tiles = ImageLoader.load_tiles_from_image(path)
         
-        # First tile at (0, 0)
-        assert tiles[0].x == 0
-        assert tiles[0].y == 0
+        # Should have 128 tiles (16×8 grid of 48×48)
+        assert len(tiles) == 128
+        assert all(t.width == 48 and t.height == 48 for t in tiles)
+    
+    def test_a3_units_have_correct_positions(self, temp_dir):
+        """A3 units should have tiles at correct positions."""
+        path = self._create_test_image(
+            os.path.join(temp_dir, "a3_positions.png"), 768, 384
+        )
+        units = ImageLoader.load_units_from_image(path)
         
-        # Second tile at (96, 0) - one unit to the right
-        assert tiles[1].x == 96
-        assert tiles[1].y == 0
+        # First unit at (0, 0) - top-left tile of the unit
+        assert units[0].tiles[0].x == 0
+        assert units[0].tiles[0].y == 0
+        # First unit's top-right tile
+        assert units[0].tiles[1].x == 48
+        assert units[0].tiles[1].y == 0
         
-        # 8th tile is at (7*96, 0) = (672, 0)
-        assert tiles[7].x == 672
-        assert tiles[7].y == 0
+        # Second unit starts at x=96 (one unit to the right)
+        assert units[1].tiles[0].x == 96
+        assert units[1].tiles[0].y == 0
         
-        # 9th tile is first of second row: (0, 96)
-        assert tiles[8].x == 0
-        assert tiles[8].y == 96
+        # 8th unit (index 7) starts at (7*96, 0) = (672, 0)
+        assert units[7].tiles[0].x == 672
+        assert units[7].tiles[0].y == 0
+        
+        # 9th unit (index 8) is first of second row: (0, 96)
+        assert units[8].tiles[0].x == 0
+        assert units[8].tiles[0].y == 96
     
     def test_similar_but_different_dimensions_uses_simple_grid(self, temp_dir):
         """Images with similar but not exact A3 dimensions should use simple grid."""
@@ -300,22 +274,102 @@ class TestA3AutoDetection:
         # Simple grid extracts 48×48 tiles
         assert all(t.width == 48 and t.height == 48 for t in tiles)
     
-    def test_a3_loads_via_load_images_as_simple_tiles(self, temp_dir):
-        """A3 format should work through the load_images_as_simple_tiles method."""
+    def test_a3_loads_via_load_units_from_images(self, temp_dir):
+        """A3 format should work through the load_units_from_images method."""
         path = self._create_test_image(
             os.path.join(temp_dir, "a3_via_method.png"), 768, 384
         )
-        tiles = ImageLoader.load_images_as_simple_tiles([path])
+        units = ImageLoader.load_units_from_images([path])
         
-        assert len(tiles) == 32
-        assert all(t.width == 96 and t.height == 96 for t in tiles)
+        assert len(units) == 32
+        assert all(u.grid_width == 2 and u.grid_height == 2 for u in units)
     
-    def test_a3_loads_via_load_folder(self, temp_dir):
-        """A3 format should work through the load_folder_as_simple_tiles method."""
+    def test_a3_loads_via_load_units_from_folder(self, temp_dir):
+        """A3 format should work through the load_units_from_folder method."""
         self._create_test_image(
             os.path.join(temp_dir, "folder_a3.png"), 768, 384
         )
-        tiles = ImageLoader.load_folder_as_simple_tiles(temp_dir)
+        units = ImageLoader.load_units_from_folder(temp_dir)
         
-        assert len(tiles) == 32
-        assert all(t.width == 96 and t.height == 96 for t in tiles)
+        assert len(units) == 32
+        assert all(u.grid_width == 2 and u.grid_height == 2 for u in units)
+
+
+class TestA2AutoDetection:
+    """Tests for automatic A2 format detection based on image dimensions."""
+    
+    @pytest.fixture
+    def temp_dir(self, qapp):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            yield tmpdir
+    
+    def _create_test_image(self, path: str, width: int, height: int):
+        image = QImage(width, height, QImage.Format.Format_ARGB32)
+        image.fill(0xFF00FF00)  # Green
+        image.save(path, "PNG")
+        return path
+    
+    def test_768x576_auto_detects_as_a2_units(self, temp_dir):
+        """An image with A2 dimensions should auto-detect as A2 format."""
+        path = self._create_test_image(
+            os.path.join(temp_dir, "auto_a2.png"), 768, 576
+        )
+        # Load without specifying tileset type - should auto-detect
+        units = ImageLoader.load_units_from_image(path)
+        
+        # A2 has 32 units (8 cols × 4 rows of 2×3 units)
+        assert len(units) == 32
+        
+        # All units should be 2×3 tiles (96×144 pixels)
+        assert all(u.grid_width == 2 and u.grid_height == 3 for u in units)
+        assert all(u.pixel_width == 96 and u.pixel_height == 144 for u in units)
+    
+    def test_a2_units_have_correct_tile_count(self, temp_dir):
+        """Each A2 unit should contain 6 tiles (2×3)."""
+        path = self._create_test_image(
+            os.path.join(temp_dir, "a2_tiles.png"), 768, 576
+        )
+        units = ImageLoader.load_units_from_image(path)
+        
+        # Each 2×3 unit should have 6 tiles
+        assert all(len(u.tiles) == 6 for u in units)
+    
+    def test_a2_units_have_correct_positions(self, temp_dir):
+        """A2 units should have tiles at correct positions."""
+        path = self._create_test_image(
+            os.path.join(temp_dir, "a2_positions.png"), 768, 576
+        )
+        units = ImageLoader.load_units_from_image(path)
+        
+        # First unit at (0, 0)
+        assert units[0].tiles[0].x == 0
+        assert units[0].tiles[0].y == 0
+        
+        # First unit's tiles in row-major order: (0,0), (48,0), (0,48), (48,48), (0,96), (48,96)
+        assert units[0].tiles[1].x == 48
+        assert units[0].tiles[1].y == 0
+        assert units[0].tiles[2].x == 0
+        assert units[0].tiles[2].y == 48
+        
+        # Second unit starts at x=96 (one unit to the right)
+        assert units[1].tiles[0].x == 96
+        assert units[1].tiles[0].y == 0
+        
+        # 8th unit (index 7) starts at (7*96, 0) = (672, 0)
+        assert units[7].tiles[0].x == 672
+        assert units[7].tiles[0].y == 0
+        
+        # 9th unit (index 8) is first of second row: (0, 144)
+        assert units[8].tiles[0].x == 0
+        assert units[8].tiles[0].y == 144
+    
+    def test_a2_returns_tiles_for_legacy(self, temp_dir):
+        """load_tiles_from_image returns individual tiles for A2."""
+        path = self._create_test_image(
+            os.path.join(temp_dir, "a2_legacy.png"), 768, 576
+        )
+        tiles = ImageLoader.load_tiles_from_image(path)
+        
+        # Should have 192 tiles (16×12 grid of 48×48)
+        assert len(tiles) == 192
+        assert all(t.width == 48 and t.height == 48 for t in tiles)
