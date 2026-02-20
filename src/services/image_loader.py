@@ -49,12 +49,58 @@ class ImageLoader:
     
     @classmethod
     def _extract_simple_grid(cls, image_path: str, image: QImage) -> List[Tile]:
-        """Extract tiles as a simple 48×48 grid."""
+        """
+        Extract tiles as a simple 48×48 grid.
+        
+        For 16-column images (BCDE pattern), tiles are extracted in two halves:
+        first the left 8 columns (all rows), then the right 8 columns (all rows).
+        This matches how RPG Maker displays them.
+        """
         tiles = []
         
         cols = image.width() // TILE_SIZE
         rows = image.height() // TILE_SIZE
         
+        # For BCDE-style images (16 columns), read in two 8-column halves
+        if cols == 16:
+            index = 0
+            # Left half (columns 0-7)
+            for row in range(rows):
+                for col in range(8):
+                    x = col * TILE_SIZE
+                    y = row * TILE_SIZE
+                    tile_image = image.copy(x, y, TILE_SIZE, TILE_SIZE)
+                    tile = Tile(
+                        source_path=image_path,
+                        source_index=index,
+                        x=x,
+                        y=y,
+                        width=TILE_SIZE,
+                        height=TILE_SIZE,
+                        image=tile_image,
+                    )
+                    tiles.append(tile)
+                    index += 1
+            # Right half (columns 8-15)
+            for row in range(rows):
+                for col in range(8, 16):
+                    x = col * TILE_SIZE
+                    y = row * TILE_SIZE
+                    tile_image = image.copy(x, y, TILE_SIZE, TILE_SIZE)
+                    tile = Tile(
+                        source_path=image_path,
+                        source_index=index,
+                        x=x,
+                        y=y,
+                        width=TILE_SIZE,
+                        height=TILE_SIZE,
+                        image=tile_image,
+                    )
+                    tiles.append(tile)
+                    index += 1
+            return tiles
+        
+        # Standard row-by-row extraction for other sizes
         index = 0
         for row in range(rows):
             for col in range(cols):
