@@ -5,7 +5,7 @@ Tiles are always displayed on a 48×48 grid. Larger units (autotiles)
 are displayed as multiple cells that select together as a group.
 """
 
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Callable
 
 from PySide6.QtWidgets import (
     QWidget,
@@ -222,13 +222,18 @@ class TilePalette(QWidget):
         self._placeholder.setStyleSheet("color: #888; padding: 20px;")
         self._tile_layout.addWidget(self._placeholder, 0, 0)
     
-    def set_units(self, units: List[TileUnit]):
-        """Set the units to display in the palette (replaces existing)."""
+    def set_units(self, units: List[TileUnit], progress_callback: Optional[Callable[[int, int], bool]] = None):
+        """Set the units to display in the palette (replaces existing).
+        
+        Args:
+            units: List of TileUnit objects to display
+            progress_callback: Optional callback(current, total) that returns True if cancelled
+        """
         self._units = units
         self._selected_unit = None
-        self._rebuild_grid()
+        self._rebuild_grid(progress_callback)
     
-    def prepend_units(self, units: List[TileUnit]):
+    def prepend_units(self, units: List[TileUnit], progress_callback: Optional[Callable[[int, int], bool]] = None):
         """Add units to the top of the palette (keeps existing, skips duplicates).
         
         Units from source images already in the palette are not added again.
@@ -242,11 +247,16 @@ class TilePalette(QWidget):
         if new_units:
             self._units = new_units + self._units
             self._selected_unit = None
-            self._rebuild_grid()
+            self._rebuild_grid(progress_callback)
     
     # Legacy methods for backward compatibility
-    def set_tiles(self, tiles: List[Tile]):
-        """Set tiles to display (legacy method - converts to units)."""
+    def set_tiles(self, tiles: List[Tile], progress_callback: Optional[Callable[[int, int], bool]] = None):
+        """Set tiles to display (legacy method - converts to units).
+        
+        Args:
+            tiles: List of Tile objects to display
+            progress_callback: Optional callback(current, total) that returns True if cancelled
+        """
         # Group tiles into units if they don't have one
         units: List[TileUnit] = []
         seen_units: set = set()
@@ -268,10 +278,15 @@ class TilePalette(QWidget):
                 tile.unit = unit
                 units.append(unit)
         
-        self.set_units(units)
+        self.set_units(units, progress_callback)
     
-    def prepend_tiles(self, tiles: List[Tile]):
-        """Add tiles to the top of the palette (legacy method)."""
+    def prepend_tiles(self, tiles: List[Tile], progress_callback: Optional[Callable[[int, int], bool]] = None):
+        """Add tiles to the top of the palette (legacy method).
+        
+        Args:
+            tiles: List of Tile objects to add
+            progress_callback: Optional callback(current, total) that returns True if cancelled
+        """
         # Group tiles into units
         units: List[TileUnit] = []
         seen_units: set = set()
@@ -292,7 +307,7 @@ class TilePalette(QWidget):
                 tile.unit = unit
                 units.append(unit)
         
-        self.prepend_units(units)
+        self.prepend_units(units, progress_callback)
     
     @property
     def _tiles(self) -> List[Tile]:
@@ -305,8 +320,12 @@ class TilePalette(QWidget):
         self._selected_unit = None
         self._rebuild_grid()
     
-    def _rebuild_grid(self):
-        """Rebuild the tile grid display."""
+    def _rebuild_grid(self, progress_callback: Optional[Callable[[int, int], bool]] = None):
+        """Rebuild the tile grid display.
+        
+        Args:
+            progress_callback: Optional callback(current, total) that returns True if cancelled
+        """
         # Clear existing buttons
         for btn in self._tile_buttons:
             btn.deleteLater()
@@ -328,6 +347,10 @@ class TilePalette(QWidget):
         # Hide placeholder
         self._placeholder.setParent(None)
         
+        # Count total tiles for progress
+        total_tiles = sum(len(unit.tiles) for unit in self._units)
+        tiles_processed = 0
+        
         # Group units by source file
         units_by_source: Dict[str, List[TileUnit]] = {}
         for unit in self._units:
@@ -336,8 +359,12 @@ class TilePalette(QWidget):
                 units_by_source[source] = []
             units_by_source[source].append(unit)
         
+        cancelled = False
         layout_row = 0
         for source_name, source_units in units_by_source.items():
+            if cancelled:
+                break
+                
             # Add source file label
             source_label = QLabel(source_name)
             source_label.setStyleSheet(
@@ -361,6 +388,8 @@ class TilePalette(QWidget):
             
             # Display tiles at their original positions (x, y based)
             for unit in source_units:
+                if cancelled:
+                    break
                 for tile in unit.tiles:
                     display_col = tile.x // TILE_SIZE
                     display_row = tile.y // TILE_SIZE
@@ -369,14 +398,26 @@ class TilePalette(QWidget):
                     btn.clicked.connect(self._on_tile_clicked)
                     self._tile_buttons.append(btn)
                     self._tile_layout.addWidget(btn, layout_row + display_row, display_col)
+                    
+                    tiles_processed += 1
+                    
+                    # Report progress and process events periodically
+                    if progress_callback and tiles_processed % 10 == 0:
+                        if progress_callback(tiles_processed, total_tiles):
+                            cancelled = True
+                            break
+                        QApplication.processEvents()
             
             layout_row += max_row
+        
+        # Final progress update
+        if progress_callback and not cancelled:
+            progress_callback(total_tiles, total_tiles)
         
         # Add stretch at bottom
         self._tile_layout.setRowStretch(layout_row, 1)
         
         # Update header with tile count
-        total_tiles = sum(len(unit.tiles) for unit in self._units)
         self._header_label.setText(f"Tile Palette ({total_tiles} tiles, {len(self._units)} units)")
     
     def _on_tile_clicked(self, tile: Tile):

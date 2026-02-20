@@ -154,7 +154,6 @@ class MainWindow(QMainWindow):
     def _select_source_folder(self):
         folder = QFileDialog.getExistingDirectory(self, "Select Source Tileset Folder")
         if folder:
-            self.source_folder_btn.setText(folder)
             self._load_tiles_from_folder(folder)
     
     def _load_tiles_from_folder(self, folder: str):
@@ -164,7 +163,7 @@ class MainWindow(QMainWindow):
             image_files = ImageLoader.find_images_in_folder(folder)
             file_count = len(image_files)
             
-            if file_count > 10:
+            if file_count > 15:
                 reply = QMessageBox.warning(
                     self,
                     "Large Number of Files",
@@ -172,7 +171,7 @@ class MainWindow(QMainWindow):
                     f"Loading many tileset images at once may cause the application "
                     f"to freeze or crash due to high memory usage.\n\n"
                     f"It's recommended to organize your tiles into smaller folders "
-                    f"(10 or fewer files each).\n\n"
+                    f"(15 or fewer files each).\n\n"
                     f"Do you want to continue anyway?",
                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                     QMessageBox.StandardButton.No
@@ -204,18 +203,35 @@ class MainWindow(QMainWindow):
                 folder, progress_callback=update_progress
             )
             
-            progress.close()
-            
             if cancelled:
+                progress.close()
                 self.status_bar.showMessage("Folder loading cancelled")
                 return
             
+            # Phase 2: Building palette grid
+            tile_count = len(tiles)
+            progress.setLabelText("Building palette...")
+            progress.setMaximum(tile_count)
+            progress.setValue(0)
+            QApplication.processEvents()
+            
+            def palette_progress(current: int, total: int) -> bool:
+                nonlocal cancelled
+                progress.setValue(current)
+                progress.setLabelText(f"Building palette... ({current}/{total} tiles)")
+                if progress.wasCanceled():
+                    cancelled = True
+                    return True
+                return False
+            
             if self.append_checkbox.isChecked():
-                self.tile_palette.prepend_tiles(tiles)
+                self.tile_palette.prepend_tiles(tiles, palette_progress)
                 self.status_bar.showMessage(f"Added {len(tiles)} tiles from {folder}")
             else:
-                self.tile_palette.set_tiles(tiles)
+                self.tile_palette.set_tiles(tiles, palette_progress)
                 self.status_bar.showMessage(f"Loaded {len(tiles)} tiles from {folder}")
+            
+            progress.close()
         except Exception as e:
             self.status_bar.showMessage(f"Error loading tiles: {e}")
     
@@ -235,7 +251,7 @@ class MainWindow(QMainWindow):
         try:
             file_count = len(image_paths)
             
-            if file_count > 10:
+            if file_count > 15:
                 reply = QMessageBox.warning(
                     self,
                     "Large Number of Files",
@@ -274,18 +290,35 @@ class MainWindow(QMainWindow):
                 image_paths, progress_callback=update_progress
             )
             
-            progress.close()
-            
             if cancelled:
+                progress.close()
                 self.status_bar.showMessage("Image loading cancelled")
                 return
             
+            # Phase 2: Building palette grid
+            tile_count = len(tiles)
+            progress.setLabelText("Building palette...")
+            progress.setMaximum(tile_count)
+            progress.setValue(0)
+            QApplication.processEvents()
+            
+            def palette_progress(current: int, total: int) -> bool:
+                nonlocal cancelled
+                progress.setValue(current)
+                progress.setLabelText(f"Building palette... ({current}/{total} tiles)")
+                if progress.wasCanceled():
+                    cancelled = True
+                    return True
+                return False
+            
             if self.append_checkbox.isChecked():
-                self.tile_palette.prepend_tiles(tiles)
+                self.tile_palette.prepend_tiles(tiles, palette_progress)
                 self.status_bar.showMessage(f"Added {len(tiles)} tiles from {file_count} image(s)")
             else:
-                self.tile_palette.set_tiles(tiles)
+                self.tile_palette.set_tiles(tiles, palette_progress)
                 self.status_bar.showMessage(f"Loaded {len(tiles)} tiles from {file_count} image(s)")
+            
+            progress.close()
         except Exception as e:
             self.status_bar.showMessage(f"Error loading tiles: {e}")
     
