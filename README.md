@@ -15,6 +15,7 @@ Have you ever found yourself copying and pasting tiles from many different tiles
 - Creates a grid for you in the format of your desired tile
 - Lets you drag-and-drop tiles from the palette to your grid, on matching sizes (so a 2x3 autotile to a 2x3 slot on your grid).
 - Lets you drag-and-drop tiles around your grid to re-arrange or remove them.
+- Allows multi-selection and dragging of tiles and autotiles with ctrl+click.
 - Export your work to PNG, or open PNG files to work on them (automatically detect tileset format)
 
 ## Installation
