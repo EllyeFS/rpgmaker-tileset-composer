@@ -1,6 +1,6 @@
 """Canvas widget for composing tilesets."""
 
-from typing import Dict, Tuple, Optional
+from typing import Dict, Tuple, Optional, List
 
 from PySide6.QtWidgets import QWidget, QScrollArea, QVBoxLayout, QApplication
 from PySide6.QtCore import Qt, Signal, QPoint, QMimeData
@@ -11,16 +11,16 @@ from ..models.tile_unit import TileUnit
 from ..utils.constants import TILE_SIZE, TILE_UNIT_MIME_TYPE
 
 
-def _get_drag_unit() -> Optional[TileUnit]:
-    """Get the currently dragged unit from the palette module."""
-    from .tile_palette import get_current_drag_unit
-    return get_current_drag_unit()
+def _get_drag_units() -> List[TileUnit]:
+    """Get the currently dragged units from the palette module."""
+    from .tile_palette import get_current_drag_units
+    return get_current_drag_units()
 
 
-def _set_drag_unit(unit: Optional[TileUnit]):
-    """Set the currently dragged unit in the palette module."""
-    from .tile_palette import set_current_drag_unit
-    set_current_drag_unit(unit)
+def _set_drag_units(units: List[TileUnit]):
+    """Set the currently dragged units in the palette module."""
+    from .tile_palette import set_current_drag_units
+    set_current_drag_units(units)
 
 
 class TileCanvasWidget(QWidget):
@@ -328,14 +328,14 @@ class TileCanvasWidget(QWidget):
         
         # Store unit in module-level variable
         self._dragging_from_canvas = True
-        _set_drag_unit(unit)
+        _set_drag_units([unit])  # Wrap in list for API consistency
         
         # Execute drag
         result = drag.exec(Qt.DropAction.MoveAction | Qt.DropAction.CopyAction)
         
         # If drag was not accepted (dropped outside), unit is discarded
         # If dropped on canvas, dropEvent will have placed it
-        _set_drag_unit(None)
+        _set_drag_units([])
         self._dragging_from_canvas = False
         self._drag_start_pos = None
     
@@ -355,10 +355,11 @@ class TileCanvasWidget(QWidget):
         """Accept drag if it contains a tile unit."""
         if event.mimeData().hasFormat(TILE_UNIT_MIME_TYPE):
             event.acceptProposedAction()
-            # Get unit from module-level storage
-            unit = _get_drag_unit()
-            if unit:
-                self._drop_hover_unit = unit
+            # Get units from module-level storage
+            units = _get_drag_units()
+            if units:
+                # Store first unit for hover preview
+                self._drop_hover_unit = units[0]
     
     def dragMoveEvent(self, event):
         """Update hover position as drag moves."""
@@ -394,21 +395,22 @@ class TileCanvasWidget(QWidget):
         self.update()
     
     def dropEvent(self, event):
-        """Handle drop of a tile unit."""
+        """Handle drop of tile units (supports multiple with relative positioning)."""
         if not event.mimeData().hasFormat(TILE_UNIT_MIME_TYPE):
             return
         
-        unit = _get_drag_unit()
-        if not unit:
+        units = _get_drag_units()
+        if not units:
             return
         
-        # Calculate grid position
+        # Calculate grid position where the first unit will be dropped
         pos = event.position().toPoint()
         grid_x = pos.x() // TILE_SIZE
         grid_y = pos.y() // TILE_SIZE
         
-        # Snap to valid position
-        valid_pos = self._snap_to_valid_position(grid_x, grid_y, unit)
+        # Snap first unit to valid position
+        first_unit = units[0]
+        valid_pos = self._snap_to_valid_position(grid_x, grid_y, first_unit)
         if not valid_pos:
             # Invalid drop - unit size doesn't match any position
             self._drop_hover_pos = None
@@ -417,10 +419,26 @@ class TileCanvasWidget(QWidget):
             self.update()
             return
         
-        grid_x, grid_y = valid_pos
+        base_grid_x, base_grid_y = valid_pos
         
-        # Place the unit
-        self.place_unit(unit, grid_x, grid_y)
+        # Calculate offsets of all units relative to the first unit
+        first_unit_grid_x = first_unit.grid_x
+        first_unit_grid_y = first_unit.grid_y
+        
+        # Place each unit at its relative position
+        for unit in units:
+            # Calculate offset from first unit
+            offset_x = unit.grid_x - first_unit_grid_x
+            offset_y = unit.grid_y - first_unit_grid_y
+            
+            # Calculate target position
+            target_x = base_grid_x + offset_x
+            target_y = base_grid_y + offset_y
+            
+            # Validate position (skip if invalid)
+            if self._is_valid_drop_position(target_x, target_y, unit):
+                self.place_unit(unit, target_x, target_y)
+            # Silently skip units that can't be placed at invalid positions
         
         # Clear hover state
         self._drop_hover_pos = None

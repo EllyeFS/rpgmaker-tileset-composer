@@ -25,19 +25,19 @@ from ..models.tile_unit import TileUnit
 from ..utils.constants import TILE_SIZE, PROGRESS_REPORT_INTERVAL, TILE_UNIT_MIME_TYPE
 
 
-# Module-level storage for currently dragged unit (Qt drag doesn't preserve Python objects)
-_current_drag_unit: Optional[TileUnit] = None
+# Module-level storage for currently dragged units (Qt drag doesn't preserve Python objects)
+_current_drag_units: List[TileUnit] = []
 
 
-def get_current_drag_unit() -> Optional[TileUnit]:
-    """Get the currently dragged tile unit."""
-    return _current_drag_unit
+def get_current_drag_units() -> List[TileUnit]:
+    """Get the currently dragged tile units."""
+    return _current_drag_units
 
 
-def set_current_drag_unit(unit: Optional[TileUnit]):
-    """Set the currently dragged tile unit."""
-    global _current_drag_unit
-    _current_drag_unit = unit
+def set_current_drag_units(units: List[TileUnit]):
+    """Set the currently dragged tile units."""
+    global _current_drag_units
+    _current_drag_units = units if units else []
 
 
 def tiles_to_units(tiles: List[Tile]) -> List[TileUnit]:
@@ -86,7 +86,7 @@ class TileButton(QFrame):
     Edge flags indicate which borders are on the unit boundary (strong borders).
     """
     
-    clicked = Signal(Tile)
+    clicked = Signal(Tile, object)  # Tile and Qt.KeyboardModifiers
     
     DEFAULT_UNIT_BORDER = QColor("#000000")
     DEFAULT_GRID_BORDER = QColor("#646464")
@@ -165,13 +165,17 @@ class TileButton(QFrame):
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
             self._drag_start_pos = event.position().toPoint()
-            self.clicked.emit(self.tile)
+            self.clicked.emit(self.tile, event.modifiers())
         super().mousePressEvent(event)
     
     def mouseMoveEvent(self, event):
         if not (event.buttons() & Qt.MouseButton.LeftButton):
             return
         if self._drag_start_pos is None:
+            return
+        
+        # Don't start drag if modifier keys are held (used for multiselect)
+        if event.modifiers() & (Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier):
             return
         
         # Check if we've moved far enough to start a drag
@@ -184,8 +188,51 @@ class TileButton(QFrame):
         if unit is None:
             return
         
-        # Create drag pixmap showing the full unit
-        drag_pixmap = unit.to_pixmap()
+        # Get palette to access selected units
+        palette = self.parent()
+        while palette and not isinstance(palette, TilePalette):
+            palette = palette.parent()
+        
+        if palette:
+            # Get draggable units (filtered to 1×1, same source)
+            draggable_units = palette.get_draggable_units(unit)
+        else:
+            # Fallback if palette not found
+            draggable_units = [unit]
+        
+        # Create composite drag pixmap
+        if len(draggable_units) == 1:
+            # Single unit - use existing behavior
+            drag_pixmap = draggable_units[0].to_pixmap()
+            hotspot = QPoint(TILE_SIZE // 2, TILE_SIZE // 2)
+        else:
+            # Multiple units - create composite pixmap
+            # Find bounding box
+            min_x = min(u.grid_x * TILE_SIZE for u in draggable_units)
+            min_y = min(u.grid_y * TILE_SIZE for u in draggable_units)
+            max_x = max(u.grid_x * TILE_SIZE for u in draggable_units)
+            max_y = max(u.grid_y * TILE_SIZE for u in draggable_units)
+            
+            width = max_x - min_x + TILE_SIZE
+            height = max_y - min_y + TILE_SIZE
+            
+            # Create composite pixmap
+            drag_pixmap = QPixmap(width, height)
+            drag_pixmap.fill(Qt.GlobalColor.transparent)
+            
+            painter = QPainter(drag_pixmap)
+            for u in draggable_units:
+                u_pixmap = u.to_pixmap()
+                x = u.grid_x * TILE_SIZE - min_x
+                y = u.grid_y * TILE_SIZE - min_y
+                painter.drawPixmap(x, y, u_pixmap)
+            painter.end()
+            
+            # Hotspot at the clicked unit's position within the composite
+            hotspot = QPoint(
+                unit.grid_x * TILE_SIZE - min_x + TILE_SIZE // 2,
+                unit.grid_y * TILE_SIZE - min_y + TILE_SIZE // 2
+            )
         
         # Create drag object
         drag = QDrag(self)
@@ -193,19 +240,18 @@ class TileButton(QFrame):
         mime_data.setData(TILE_UNIT_MIME_TYPE, b"")  # Marker data
         drag.setMimeData(mime_data)
         drag.setPixmap(drag_pixmap)
+        drag.setHotSpot(hotspot)
         
-        # Hotspot at center of top-left tile (matches drop behavior)
-        drag.setHotSpot(QPoint(TILE_SIZE // 2, TILE_SIZE // 2))
-        
-        # Store unit in module-level variable (Qt drag doesn't preserve Python objects)
-        set_current_drag_unit(unit)
+        # Store units in module-level variable (Qt drag doesn't preserve Python objects)
+        set_current_drag_units(draggable_units)
         
         # Execute drag
         drag.exec(Qt.DropAction.CopyAction)
         
-        # Clear drag unit reference
-        set_current_drag_unit(None)
+        # Clear drag units reference
+        set_current_drag_units([])
         self._drag_start_pos = None
+
 
 
 class TilePalette(QWidget):
@@ -224,7 +270,8 @@ class TilePalette(QWidget):
         
         self._units: List[TileUnit] = []
         self._tile_buttons: List[TileButton] = []
-        self._selected_unit: Optional[TileUnit] = None
+        self._selected_units: List[TileUnit] = []  # Multiple selection support
+        self._last_clicked_unit: Optional[TileUnit] = None  # For future shift-select
         
         # Grid colors for tile buttons
         self._unit_border_color: QColor = QColor(TileButton.DEFAULT_UNIT_BORDER)
@@ -269,7 +316,7 @@ class TilePalette(QWidget):
             progress_callback: Optional callback(current, total) that returns True if cancelled
         """
         self._units = units
-        self._selected_unit = None
+        self._selected_units = []
         self._rebuild_grid(progress_callback)
     
     def prepend_units(self, units: List[TileUnit], progress_callback: Optional[Callable[[int, int], bool]] = None):
@@ -285,13 +332,13 @@ class TilePalette(QWidget):
         
         if new_units:
             self._units = new_units + self._units
-            self._selected_unit = None
+            self._selected_units = []
             self._rebuild_grid(progress_callback)
     
     def clear(self):
         """Clear all units from the palette."""
         self._units = []
-        self._selected_unit = None
+        self._selected_units = []
         self._rebuild_grid()
     
     def set_unit_border_color(self, color: QColor):
@@ -432,21 +479,77 @@ class TilePalette(QWidget):
         # Re-enable visual updates now that grid is fully built
         self.setUpdatesEnabled(True)
     
-    def _on_tile_clicked(self, tile: Tile):
-        """Handle tile button click - selects the entire unit."""
+    def _on_tile_clicked(self, tile: Tile, modifiers):
+        """Handle tile button click - selects the entire unit.
+        
+        Supports multiselect with Ctrl key (restricted to same source).
+        """
         unit = tile.unit
         if unit is None:
             return
         
-        # Update selection state for all tile buttons
-        for btn in self._tile_buttons:
-            btn.selected = (btn.tile.unit is unit)
+        if modifiers & Qt.KeyboardModifier.ControlModifier:
+            # Ctrl+Click: toggle selection (restricted to same source)
+            if self._selected_units:
+                # Check if trying to select from different source
+                first_source = self._selected_units[0].source_path
+                if unit.source_path != first_source:
+                    # Different source - ignore ctrl, replace selection
+                    self._selected_units = [unit]
+                elif unit in self._selected_units:
+                    # Same source - toggle off
+                    self._selected_units.remove(unit)
+                else:
+                    # Same source - add to selection
+                    self._selected_units.append(unit)
+            else:
+                # First selection
+                self._selected_units = [unit]
+        else:
+            # Normal click: single selection
+            self._selected_units = [unit]
         
-        self._selected_unit = unit
-        self.unit_selected.emit(unit)
+        self._last_clicked_unit = unit
+        self._update_selection_visuals()
+        
+        # Emit signal with first selected unit for compatibility
+        if self._selected_units:
+            self.unit_selected.emit(self._selected_units[0])
+    
+    def _update_selection_visuals(self):
+        """Update visual selection state for all tile buttons."""
+        for btn in self._tile_buttons:
+            btn.selected = (btn.tile.unit in self._selected_units)
+    
+    def get_draggable_units(self, clicked_unit: TileUnit) -> List[TileUnit]:
+        """Get units that can be dragged together (only 1×1 units).
+        
+        Args:
+            clicked_unit: The unit that was actually clicked/dragged
+            
+        Returns:
+            List of 1×1 units from the same source, or just the clicked unit if it's not 1×1
+        """
+        # If clicked unit is not 1×1, just drag it alone
+        if clicked_unit.grid_width != 1 or clicked_unit.grid_height != 1:
+            return [clicked_unit]
+        
+        # Filter selected units to only 1×1 from same source
+        draggable = []
+        for unit in self._selected_units:
+            if (unit.grid_width == 1 and unit.grid_height == 1 and 
+                unit.source_path == clicked_unit.source_path):
+                draggable.append(unit)
+        
+        return draggable if draggable else [clicked_unit]
     
     @property
     def selected_unit(self) -> Optional[TileUnit]:
-        """Get the currently selected unit."""
-        return self._selected_unit
+        """Get the first selected unit (for compatibility)."""
+        return self._selected_units[0] if self._selected_units else None
+    
+    @property
+    def selected_units(self) -> List[TileUnit]:
+        """Get all currently selected units."""
+        return self._selected_units
 
