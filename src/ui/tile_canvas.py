@@ -8,11 +8,7 @@ from PySide6.QtGui import QPainter, QColor, QPen, QBrush, QPixmap, QDrag
 
 from ..models.tileset_types import TilesetType, TILESET_TYPES, get_unit_positions
 from ..models.tile_unit import TileUnit
-from ..utils.constants import TILE_SIZE
-
-
-# Custom MIME type for tile unit drag operations (must match palette)
-TILE_UNIT_MIME_TYPE = "application/x-rpgmaker-tileunit"
+from ..utils.constants import TILE_SIZE, TILE_UNIT_MIME_TYPE
 
 
 def _get_drag_unit() -> Optional[TileUnit]:
@@ -52,9 +48,6 @@ class TileCanvasWidget(QWidget):
     
     # Drop hover highlight color
     DROP_HIGHLIGHT_COLOR = QColor(52, 152, 219, 100)  # Semi-transparent blue
-    
-    # Invalid drop highlight color
-    INVALID_DROP_COLOR = QColor(231, 76, 60, 100)  # Semi-transparent red
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -238,7 +231,6 @@ class TileCanvasWidget(QWidget):
             painter.drawLine(0, y, rect.width(), y)
         
         # Draw stronger unit boundary lines
-        unit_positions = get_unit_positions(self._tileset_type)
         unit_pen = QPen(self._unit_grid_color)
         unit_pen.setWidth(2)
         painter.setPen(unit_pen)
@@ -246,7 +238,7 @@ class TileCanvasWidget(QWidget):
         # Collect unique x and y boundaries from unit positions
         x_boundaries = set([0, rect.width()])
         y_boundaries = set([0, rect.height()])
-        for (ux, uy, uw, uh) in unit_positions:
+        for (ux, uy, uw, uh) in self._unit_positions:
             x_boundaries.add(ux)
             x_boundaries.add(ux + uw)
             y_boundaries.add(uy)
@@ -327,7 +319,7 @@ class TileCanvasWidget(QWidget):
         self.update()
         
         # Create drag pixmap
-        drag_pixmap = self._create_unit_pixmap(unit)
+        drag_pixmap = unit.to_pixmap()
         
         # Create drag object
         drag = QDrag(self)
@@ -361,28 +353,6 @@ class TileCanvasWidget(QWidget):
                 uy <= grid_y < uy + unit.grid_height):
                 return ((ux, uy), unit)
         return None
-    
-    def _create_unit_pixmap(self, unit: TileUnit) -> QPixmap:
-        """Create a pixmap showing the complete unit."""
-        width = unit.grid_width * TILE_SIZE
-        height = unit.grid_height * TILE_SIZE
-        
-        pixmap = QPixmap(width, height)
-        pixmap.fill(Qt.GlobalColor.transparent)
-        
-        painter = QPainter(pixmap)
-        
-        if unit.tiles:
-            min_x = min(t.x for t in unit.tiles)
-            min_y = min(t.y for t in unit.tiles)
-            
-            for tile in unit.tiles:
-                rel_x = tile.x - min_x
-                rel_y = tile.y - min_y
-                painter.drawPixmap(rel_x, rel_y, tile.pixmap)
-        
-        painter.end()
-        return pixmap
     
     def dragEnterEvent(self, event):
         """Accept drag if it contains a tile unit."""

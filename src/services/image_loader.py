@@ -235,6 +235,42 @@ class ImageLoader:
         return sorted(images)
     
     @classmethod
+    def _load_batch(
+        cls,
+        image_paths: List[str],
+        load_func: Callable[[str], List],
+        progress_callback: Optional[Callable[[int, int], None]] = None,
+    ) -> List:
+        """
+        Load items from multiple images using a provided load function.
+        
+        Args:
+            image_paths: List of paths to image files.
+            load_func: Function to load items from a single image path.
+            progress_callback: Optional callback(current, total) for progress updates.
+        
+        Returns:
+            List of all items from all images.
+        """
+        all_items = []
+        total = len(image_paths)
+        
+        for i, image_path in enumerate(image_paths):
+            if progress_callback:
+                progress_callback(i, total)
+            try:
+                items = load_func(image_path)
+                all_items.extend(items)
+            except ValueError:
+                # Skip files that fail to load
+                continue
+        
+        if progress_callback:
+            progress_callback(total, total)
+        
+        return all_items
+    
+    @classmethod
     def load_folder_as_simple_tiles(
         cls,
         folder_path: str,
@@ -250,24 +286,8 @@ class ImageLoader:
         Returns:
             List of all tiles from all images in the folder.
         """
-        all_tiles = []
         image_paths = cls.find_images_in_folder(folder_path)
-        total = len(image_paths)
-        
-        for i, image_path in enumerate(image_paths):
-            if progress_callback:
-                progress_callback(i, total)
-            try:
-                tiles = cls.load_tiles_from_image(image_path)
-                all_tiles.extend(tiles)
-            except ValueError:
-                # Skip files that fail to load
-                continue
-        
-        if progress_callback:
-            progress_callback(total, total)
-        
-        return all_tiles
+        return cls._load_batch(image_paths, cls.load_tiles_from_image, progress_callback)
     
     @classmethod
     def load_images_as_simple_tiles(
@@ -285,23 +305,7 @@ class ImageLoader:
         Returns:
             List of all tiles from the specified images.
         """
-        all_tiles = []
-        total = len(image_paths)
-        
-        for i, image_path in enumerate(image_paths):
-            if progress_callback:
-                progress_callback(i, total)
-            try:
-                tiles = cls.load_tiles_from_image(image_path)
-                all_tiles.extend(tiles)
-            except ValueError:
-                # Skip files that fail to load
-                continue
-        
-        if progress_callback:
-            progress_callback(total, total)
-        
-        return all_tiles
+        return cls._load_batch(image_paths, cls.load_tiles_from_image, progress_callback)
     
     @classmethod
     def load_units_from_folder(
@@ -319,24 +323,8 @@ class ImageLoader:
         Returns:
             List of all units from all images in the folder.
         """
-        all_units: List[TileUnit] = []
         image_paths = cls.find_images_in_folder(folder_path)
-        total = len(image_paths)
-        
-        for i, image_path in enumerate(image_paths):
-            if progress_callback:
-                progress_callback(i, total)
-            try:
-                units = cls.load_units_from_image(image_path)
-                all_units.extend(units)
-            except ValueError:
-                # Skip files that fail to load
-                continue
-        
-        if progress_callback:
-            progress_callback(total, total)
-        
-        return all_units
+        return cls._load_batch(image_paths, cls.load_units_from_image, progress_callback)
     
     @classmethod
     def load_units_from_images(
@@ -354,20 +342,4 @@ class ImageLoader:
         Returns:
             List of all units from the specified images.
         """
-        all_units: List[TileUnit] = []
-        total = len(image_paths)
-        
-        for i, image_path in enumerate(image_paths):
-            if progress_callback:
-                progress_callback(i, total)
-            try:
-                units = cls.load_units_from_image(image_path)
-                all_units.extend(units)
-            except ValueError:
-                # Skip files that fail to load
-                continue
-        
-        if progress_callback:
-            progress_callback(total, total)
-        
-        return all_units
+        return cls._load_batch(image_paths, cls.load_units_from_image, progress_callback)

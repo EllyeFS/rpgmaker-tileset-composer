@@ -77,3 +77,30 @@ class TileUnit:
             if index < len(self.tiles):
                 return self.tiles[index]
         return None
+    
+    def to_pixmap(self) -> "QPixmap":
+        """
+        Create a QPixmap showing the complete unit.
+        
+        Returns:
+            QPixmap with all tiles composited at their relative positions.
+        """
+        from PySide6.QtGui import QPixmap, QPainter
+        from PySide6.QtCore import Qt
+        
+        pixmap = QPixmap(self.pixel_width, self.pixel_height)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        
+        if self.tiles:
+            painter = QPainter(pixmap)
+            min_x = min(t.x for t in self.tiles)
+            min_y = min(t.y for t in self.tiles)
+            
+            for tile in self.tiles:
+                rel_x = tile.x - min_x
+                rel_y = tile.y - min_y
+                painter.drawPixmap(rel_x, rel_y, tile.pixmap)
+            
+            painter.end()
+        
+        return pixmap

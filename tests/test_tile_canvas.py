@@ -70,15 +70,11 @@ class TestTileCanvasWidget:
         qtbot.addWidget(canvas)
         
         expected_sizes = {
-            "A1": (768, 576),
             "A2": (768, 576),
             "A3": (768, 384),
             "A4": (768, 720),
             "A5": (384, 768),
             "B": (768, 768),
-            "C": (768, 768),
-            "D": (768, 768),
-            "E": (768, 768),
         }
         
         for type_name, (expected_w, expected_h) in expected_sizes.items():

@@ -8,17 +8,12 @@ from src.models.tileset_types import (
     UNIT_1x1,
     UNIT_2x2,
     UNIT_2x3,
-    UNIT_6x3,
 )
 from src.utils.constants import TILE_SIZE
 
 
 class TestTilesetTypeCounts:
     """Verify each tileset type has the correct number of units."""
-    
-    def test_a1_has_16_units(self):
-        """A1: 4 rows × 4 units per row (2 animated + 2 static)."""
-        assert TILESET_TYPES["A1"].total_units == 16
     
     def test_a2_has_32_units(self):
         """A2: 4 rows × 8 units per row."""
@@ -36,25 +31,20 @@ class TestTilesetTypeCounts:
         """A5: 16 rows × 8 tiles per row."""
         assert TILESET_TYPES["A5"].total_units == 128
     
-    @pytest.mark.parametrize("name", ["B", "C", "D", "E"])
-    def test_bcde_have_256_units(self, name):
-        """B-E: 16 rows × 16 tiles per row."""
-        assert TILESET_TYPES[name].total_units == 256
+    def test_b_has_256_units(self):
+        """B: 16 rows × 16 tiles per row."""
+        assert TILESET_TYPES["B"].total_units == 256
 
 
 class TestTilesetTypeDimensions:
     """Verify tileset image dimensions are correct."""
     
     @pytest.mark.parametrize("name,width,height", [
-        ("A1", 768, 576),
         ("A2", 768, 576),
         ("A3", 768, 384),
         ("A4", 768, 720),
         ("A5", 384, 768),
         ("B", 768, 768),
-        ("C", 768, 768),
-        ("D", 768, 768),
-        ("E", 768, 768),
     ])
     def test_dimensions(self, name, width, height):
         tileset = TILESET_TYPES[name]
@@ -83,7 +73,7 @@ class TestGetUnitPositions:
     
     def test_no_overlapping_positions(self):
         """Units should not overlap (for simple grid tilesets)."""
-        for name in ["A5", "B", "C", "D", "E"]:
+        for name in ["A5", "B"]:
             tileset = TILESET_TYPES[name]
             positions = get_unit_positions(tileset)
             
@@ -95,29 +85,6 @@ class TestGetUnitPositions:
                     x_overlap = x1 < x2 + w2 and x2 < x1 + w1
                     y_overlap = y1 < y2 + h2 and y2 < y1 + h1
                     assert not (x_overlap and y_overlap), f"{name}: units {i} and {j} overlap"
-
-
-class TestA1Layout:
-    """Verify A1's specific alternating layout."""
-    
-    def test_row_pattern(self):
-        """Each row should have: [6×3][2×3][6×3][2×3]."""
-        tileset = TILESET_TYPES["A1"]
-        positions = get_unit_positions(tileset)
-        
-        # 4 rows, 4 units each
-        assert len(positions) == 16
-        
-        for row in range(4):
-            row_positions = positions[row * 4 : row * 4 + 4]
-            
-            # Verify widths: 288, 96, 288, 96
-            widths = [p[2] for p in row_positions]
-            assert widths == [288, 96, 288, 96], f"Row {row} width pattern incorrect"
-            
-            # All heights should be 144 (3 tiles)
-            heights = [p[3] for p in row_positions]
-            assert all(h == 144 for h in heights), f"Row {row} heights incorrect"
 
 
 class TestA4Layout:

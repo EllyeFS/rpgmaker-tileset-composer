@@ -22,11 +22,8 @@ from PySide6.QtGui import QPainter, QPen, QColor, QDrag, QPixmap
 
 from ..models.tile import Tile
 from ..models.tile_unit import TileUnit
-from ..utils.constants import TILE_SIZE
+from ..utils.constants import TILE_SIZE, PROGRESS_REPORT_INTERVAL, TILE_UNIT_MIME_TYPE
 
-
-# Custom MIME type for tile unit drag operations
-TILE_UNIT_MIME_TYPE = "application/x-rpgmaker-tileunit"
 
 # Module-level storage for currently dragged unit (Qt drag doesn't preserve Python objects)
 _current_drag_unit: Optional[TileUnit] = None
@@ -42,6 +39,41 @@ def set_current_drag_unit(unit: Optional[TileUnit]):
     global _current_drag_unit
     _current_drag_unit = unit
 
+
+def tiles_to_units(tiles: List[Tile]) -> List[TileUnit]:
+    """
+    Convert a list of tiles to a list of unique units.
+    
+    Tiles that already belong to a unit are grouped by that unit.
+    Orphan tiles (no unit) get a new 1x1 unit created for them.
+    
+    Args:
+        tiles: List of Tile objects.
+        
+    Returns:
+        List of unique TileUnit objects.
+    """
+    units: List[TileUnit] = []
+    seen_units: set = set()
+    
+    for tile in tiles:
+        if tile.unit is not None:
+            if id(tile.unit) not in seen_units:
+                units.append(tile.unit)
+                seen_units.add(id(tile.unit))
+        else:
+            # Create a 1×1 unit for orphan tiles
+            unit = TileUnit(
+                grid_width=1,
+                grid_height=1,
+                tiles=[tile],
+                grid_x=tile.x // TILE_SIZE,
+                grid_y=tile.y // TILE_SIZE,
+            )
+            tile.unit = unit
+            units.append(unit)
+    
+    return units
 
 class TileButton(QFrame):
     """
@@ -166,7 +198,7 @@ class TileButton(QFrame):
             return
         
         # Create drag pixmap showing the full unit
-        drag_pixmap = self._create_unit_pixmap(unit)
+        drag_pixmap = unit.to_pixmap()
         
         # Create drag object
         drag = QDrag(self)
@@ -187,30 +219,6 @@ class TileButton(QFrame):
         # Clear drag unit reference
         set_current_drag_unit(None)
         self._drag_start_pos = None
-    
-    def _create_unit_pixmap(self, unit: TileUnit) -> QPixmap:
-        """Create a pixmap showing the complete unit."""
-        width = unit.grid_width * TILE_SIZE
-        height = unit.grid_height * TILE_SIZE
-        
-        pixmap = QPixmap(width, height)
-        pixmap.fill(Qt.GlobalColor.transparent)
-        
-        painter = QPainter(pixmap)
-        
-        # Find the top-left position in pixels
-        if unit.tiles:
-            min_x = min(t.x for t in unit.tiles)
-            min_y = min(t.y for t in unit.tiles)
-            
-            # Draw each tile at its relative position
-            for tile in unit.tiles:
-                rel_x = tile.x - min_x
-                rel_y = tile.y - min_y
-                painter.drawPixmap(rel_x, rel_y, tile.pixmap)
-        
-        painter.end()
-        return pixmap
 
 
 class TilePalette(QWidget):
@@ -233,7 +241,6 @@ class TilePalette(QWidget):
         self._units: List[TileUnit] = []
         self._tile_buttons: List[TileButton] = []
         self._selected_unit: Optional[TileUnit] = None
-        self._columns = 8  # Number of columns in the grid
         
         # Grid colors for tile buttons
         self._unit_border_color: QColor = QColor(TileButton.DEFAULT_UNIT_BORDER)
@@ -305,28 +312,7 @@ class TilePalette(QWidget):
             tiles: List of Tile objects to display
             progress_callback: Optional callback(current, total) that returns True if cancelled
         """
-        # Group tiles into units if they don't have one
-        units: List[TileUnit] = []
-        seen_units: set = set()
-        
-        for tile in tiles:
-            if tile.unit is not None:
-                if id(tile.unit) not in seen_units:
-                    units.append(tile.unit)
-                    seen_units.add(id(tile.unit))
-            else:
-                # Create a 1×1 unit for orphan tiles
-                unit = TileUnit(
-                    grid_width=1,
-                    grid_height=1,
-                    tiles=[tile],
-                    grid_x=tile.x // TILE_SIZE,
-                    grid_y=tile.y // TILE_SIZE,
-                )
-                tile.unit = unit
-                units.append(unit)
-        
-        self.set_units(units, progress_callback)
+        self.set_units(tiles_to_units(tiles), progress_callback)
     
     def prepend_tiles(self, tiles: List[Tile], progress_callback: Optional[Callable[[int, int], bool]] = None):
         """Add tiles to the top of the palette (legacy method).
@@ -335,27 +321,7 @@ class TilePalette(QWidget):
             tiles: List of Tile objects to add
             progress_callback: Optional callback(current, total) that returns True if cancelled
         """
-        # Group tiles into units
-        units: List[TileUnit] = []
-        seen_units: set = set()
-        
-        for tile in tiles:
-            if tile.unit is not None:
-                if id(tile.unit) not in seen_units:
-                    units.append(tile.unit)
-                    seen_units.add(id(tile.unit))
-            else:
-                unit = TileUnit(
-                    grid_width=1,
-                    grid_height=1,
-                    tiles=[tile],
-                    grid_x=tile.x // TILE_SIZE,
-                    grid_y=tile.y // TILE_SIZE,
-                )
-                tile.unit = unit
-                units.append(unit)
-        
-        self.prepend_units(units, progress_callback)
+        self.prepend_units(tiles_to_units(tiles), progress_callback)
     
     @property
     def _tiles(self) -> List[Tile]:
@@ -487,7 +453,7 @@ class TilePalette(QWidget):
                     tiles_processed += 1
                     
                     # Report progress and process events periodically
-                    if progress_callback and tiles_processed % 10 == 0:
+                    if progress_callback and tiles_processed % PROGRESS_REPORT_INTERVAL == 0:
                         if progress_callback(tiles_processed, total_tiles):
                             cancelled = True
                             break
@@ -532,10 +498,4 @@ class TilePalette(QWidget):
         if self._selected_unit and self._selected_unit.tiles:
             return self._selected_unit.tiles[0]
         return None
-    
-    def set_columns(self, columns: int):
-        """Set the number of columns in the tile grid."""
-        if columns > 0 and columns != self._columns:
-            self._columns = columns
-            self._rebuild_grid()
 

@@ -68,26 +68,14 @@ class TilesetType:
 # Unit size definitions
 UNIT_1x1 = UnitDefinition(1, 1)    # Single tile (48×48)
 UNIT_2x2 = UnitDefinition(2, 2)    # 96×96 (A3, A4 wall face)
-UNIT_2x3 = UnitDefinition(2, 3)    # 96×144 (A2, A4 wall top, A1 static)
-UNIT_6x3 = UnitDefinition(6, 3)    # 288×144 (A1 animated)
+UNIT_2x3 = UnitDefinition(2, 3)    # 96×144 (A2, A4 wall top)
 
 
 # Tileset type definitions
 TILESET_TYPES = {
-    # A1: Animated autotiles - 768×576
-    # 4 rows, each: [6×3][2×3][6×3][2×3]
-    # Note: A1 shares dimensions with A2, so auto-detection treats both as A2 format.
-    # This definition exists for potential future explicit A1 handling.
-    "A1": TilesetType(
-        name="A1",
-        width=768,
-        height=576,
-        even_row_layout=(UNIT_6x3, UNIT_2x3, UNIT_6x3, UNIT_2x3),
-        odd_row_layout=(UNIT_6x3, UNIT_2x3, UNIT_6x3, UNIT_2x3),
-        unit_rows=4,
-    ),
-    
-    # A2: Ground autotiles - 768×576
+    # A1/A2: Ground autotiles - 768×576
+    # A1 (animated) and A2 (ground) share dimensions; we use A2's simpler 2×3 layout.
+    # RPG Maker's A1 animated tiles appear as static 2×3 units when loaded this way.
     # 4 rows of 2×3 units, 8 per row
     "A2": TilesetType(
         name="A2",
@@ -131,36 +119,11 @@ TILESET_TYPES = {
         odd_row_layout=(UNIT_1x1,),
         unit_rows=16,
     ),
-    
     # B-E: Upper layer tiles - 768×768
     # 16×16 grid of individual tiles
-    # Note: Source images may be smaller than 768×768; we always create at full size
+    # B/C/D/E are identical in format; we use a single "B" type for all.
     "B": TilesetType(
         name="B",
-        width=768,
-        height=768,
-        even_row_layout=(UNIT_1x1,),
-        odd_row_layout=(UNIT_1x1,),
-        unit_rows=16,
-    ),
-    "C": TilesetType(
-        name="C",
-        width=768,
-        height=768,
-        even_row_layout=(UNIT_1x1,),
-        odd_row_layout=(UNIT_1x1,),
-        unit_rows=16,
-    ),
-    "D": TilesetType(
-        name="D",
-        width=768,
-        height=768,
-        even_row_layout=(UNIT_1x1,),
-        odd_row_layout=(UNIT_1x1,),
-        unit_rows=16,
-    ),
-    "E": TilesetType(
-        name="E",
         width=768,
         height=768,
         even_row_layout=(UNIT_1x1,),
@@ -202,49 +165,30 @@ def get_unit_positions(tileset_type: TilesetType) -> List[Tuple[int, int, int, i
     return positions
 
 
-# Grouped types - types that share the same dimensions and are interchangeable
-# These are grouped for UI purposes (New dialog, target label, detection)
-TYPE_GROUPS = {
-    "A1/A2": ["A1", "A2"],  # 768×576 animated/ground autotiles
-    "B-E": ["B", "C", "D", "E"],  # 768×768 upper layer tiles
+# Display names for grouped types (used in UI)
+# These provide user-friendly names that reflect RPG Maker's naming convention
+DISPLAY_NAMES = {
+    "A2": "A1/A2",  # A1 and A2 share dimensions
+    "B": "B-E",     # B, C, D, E are identical
 }
 
-# Reverse mapping: individual type -> group name (if grouped)
-TYPE_TO_GROUP = {}
-for group_name, types in TYPE_GROUPS.items():
-    for t in types:
-        TYPE_TO_GROUP[t] = group_name
+# Reverse mapping: display name -> canonical type
+DISPLAY_NAME_TO_TYPE = {v: k for k, v in DISPLAY_NAMES.items()}
 
-# Canonical types for each group (used for actual canvas dimensions)
-GROUP_CANONICAL_TYPE = {
-    "A1/A2": "A2",  # Use A2 format for A1/A2 (simpler layout)
-    "B-E": "B",     # Use B for B-E (all identical)
-}
-
-# All selectable types for the UI (ungrouped + grouped)
+# All selectable types for the UI (uses display names for grouped types)
 SELECTABLE_TYPES = ["A1/A2", "A3", "A4", "A5", "B-E"]
 
 
 def get_display_name(type_name: str) -> str:
     """Get the display name for a type (grouped if applicable)."""
-    return TYPE_TO_GROUP.get(type_name, type_name)
+    return DISPLAY_NAMES.get(type_name, type_name)
 
 
 def get_canonical_type(type_or_group: str) -> str:
     """Get the canonical individual type name for a type or group."""
-    if type_or_group in GROUP_CANONICAL_TYPE:
-        return GROUP_CANONICAL_TYPE[type_or_group]
-    return type_or_group
+    return DISPLAY_NAME_TO_TYPE.get(type_or_group, type_or_group)
 
 
 def get_detection_message(type_name: str) -> str:
     """Get a message describing the detected tileset type."""
-    if type_name in TYPE_TO_GROUP:
-        group = TYPE_TO_GROUP[type_name]
-        types = TYPE_GROUPS[group]
-        if len(types) == 2:
-            return f"{types[0]} or {types[1]}"
-        else:
-            return ", ".join(types[:-1]) + f" or {types[-1]}"
-    return type_name
-
+    return DISPLAY_NAMES.get(type_name, type_name)

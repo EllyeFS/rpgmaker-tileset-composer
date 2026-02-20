@@ -31,6 +31,7 @@ from ..services.project_serializer import load_image_as_project
 from .tile_palette import TilePalette
 from .tile_canvas import TileCanvas
 from .new_project_dialog import NewProjectDialog
+from ..utils.constants import COLOR_BUTTON_SIZE
 
 
 class MainWindow(QMainWindow):
@@ -105,13 +106,13 @@ class MainWindow(QMainWindow):
         
         self.palette_unit_color_btn = QPushButton()
         self.palette_unit_color_btn.setToolTip("Palette unit border color")
-        self.palette_unit_color_btn.setFixedSize(24, 24)
+        self.palette_unit_color_btn.setFixedSize(COLOR_BUTTON_SIZE, COLOR_BUTTON_SIZE)
         self.palette_unit_color_btn.clicked.connect(self._pick_palette_unit_color)
         toolbar_layout.addWidget(self.palette_unit_color_btn)
         
         self.palette_grid_color_btn = QPushButton()
         self.palette_grid_color_btn.setToolTip("Palette grid color")
-        self.palette_grid_color_btn.setFixedSize(24, 24)
+        self.palette_grid_color_btn.setFixedSize(COLOR_BUTTON_SIZE, COLOR_BUTTON_SIZE)
         self.palette_grid_color_btn.clicked.connect(self._pick_palette_grid_color)
         toolbar_layout.addWidget(self.palette_grid_color_btn)
         
@@ -120,13 +121,13 @@ class MainWindow(QMainWindow):
         
         self.canvas_unit_color_btn = QPushButton()
         self.canvas_unit_color_btn.setToolTip("Canvas unit border color")
-        self.canvas_unit_color_btn.setFixedSize(24, 24)
+        self.canvas_unit_color_btn.setFixedSize(COLOR_BUTTON_SIZE, COLOR_BUTTON_SIZE)
         self.canvas_unit_color_btn.clicked.connect(self._pick_canvas_unit_color)
         toolbar_layout.addWidget(self.canvas_unit_color_btn)
         
         self.canvas_grid_color_btn = QPushButton()
         self.canvas_grid_color_btn.setToolTip("Canvas grid color")
-        self.canvas_grid_color_btn.setFixedSize(24, 24)
+        self.canvas_grid_color_btn.setFixedSize(COLOR_BUTTON_SIZE, COLOR_BUTTON_SIZE)
         self.canvas_grid_color_btn.clicked.connect(self._pick_canvas_grid_color)
         toolbar_layout.addWidget(self.canvas_grid_color_btn)
         
@@ -177,82 +178,13 @@ class MainWindow(QMainWindow):
     
     def _load_tiles_from_folder(self, folder: str):
         """Load all tiles from the selected folder."""
-        try:
-            # Check file count first
-            image_files = ImageLoader.find_images_in_folder(folder)
-            file_count = len(image_files)
-            
-            if file_count > 15:
-                reply = QMessageBox.warning(
-                    self,
-                    "Large Number of Files",
-                    f"This folder contains {file_count} image files.\n\n"
-                    f"Loading many tileset images at once may cause the application "
-                    f"to freeze or crash due to high memory usage.\n\n"
-                    f"It's recommended to organize your tiles into smaller folders "
-                    f"(15 or fewer files each).\n\n"
-                    f"Do you want to continue anyway?",
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                    QMessageBox.StandardButton.No
-                )
-                if reply != QMessageBox.StandardButton.Yes:
-                    self.status_bar.showMessage("Folder loading cancelled")
-                    return
-            
-            # Create progress dialog
-            progress = QProgressDialog(
-                "Loading images...", "Cancel", 0, file_count, self
-            )
-            progress.setWindowTitle("Loading")
-            progress.setWindowModality(Qt.WindowModality.WindowModal)
-            progress.setMinimumDuration(0)  # Show immediately
-            progress.setValue(0)
-            
-            cancelled = False
-            
-            def update_progress(current: int, total: int):
-                nonlocal cancelled
-                progress.setValue(current)
-                progress.setLabelText(f"Loading image {current + 1} of {total}...")
-                QApplication.processEvents()
-                if progress.wasCanceled():
-                    cancelled = True
-            
-            tiles = ImageLoader.load_folder_as_simple_tiles(
-                folder, progress_callback=update_progress
-            )
-            
-            if cancelled:
-                progress.close()
-                self.status_bar.showMessage("Folder loading cancelled")
-                return
-            
-            # Phase 2: Building palette grid
-            tile_count = len(tiles)
-            progress.setLabelText("Building palette...")
-            progress.setMaximum(tile_count)
-            progress.setValue(0)
-            QApplication.processEvents()
-            
-            def palette_progress(current: int, total: int) -> bool:
-                nonlocal cancelled
-                progress.setValue(current)
-                progress.setLabelText(f"Building palette... ({current}/{total} tiles)")
-                if progress.wasCanceled():
-                    cancelled = True
-                    return True
-                return False
-            
-            if self.append_checkbox.isChecked():
-                self.tile_palette.prepend_tiles(tiles, palette_progress)
-                self.status_bar.showMessage(f"Added {len(tiles)} tiles from {folder}")
-            else:
-                self.tile_palette.set_tiles(tiles, palette_progress)
-                self.status_bar.showMessage(f"Loaded {len(tiles)} tiles from {folder}")
-            
-            progress.close()
-        except Exception as e:
-            self.status_bar.showMessage(f"Error loading tiles: {e}")
+        image_files = ImageLoader.find_images_in_folder(folder)
+        self._load_tiles(
+            image_paths=image_files,
+            load_func=lambda paths, cb: ImageLoader.load_folder_as_simple_tiles(folder, progress_callback=cb),
+            source_description=folder,
+            warning_context="folder",
+        )
     
     def _select_images(self):
         """Open file dialog to select individual image files."""
@@ -267,23 +199,62 @@ class MainWindow(QMainWindow):
     
     def _load_tiles_from_images(self, image_paths: list):
         """Load tiles from selected image files."""
+        self._load_tiles(
+            image_paths=image_paths,
+            load_func=lambda paths, cb: ImageLoader.load_images_as_simple_tiles(paths, progress_callback=cb),
+            source_description=f"{len(image_paths)} image(s)",
+            warning_context="selection",
+        )
+    
+    def _load_tiles(
+        self,
+        image_paths: list,
+        load_func,
+        source_description: str,
+        warning_context: str,
+    ):
+        """
+        Shared tile loading logic with progress dialog and warnings.
+        
+        Args:
+            image_paths: List of image paths to load.
+            load_func: Callable(paths, progress_callback) -> List[Tile]
+            source_description: Text describing the source for status messages.
+            warning_context: 'folder' or 'selection' for warning message variations.
+        """
+        from ..utils.constants import MAX_RECOMMENDED_FILES
+        
         try:
             file_count = len(image_paths)
             
-            if file_count > 15:
+            if file_count > MAX_RECOMMENDED_FILES:
+                if warning_context == "folder":
+                    message = (
+                        f"This folder contains {file_count} image files.\n\n"
+                        f"Loading many tileset images at once may cause the application "
+                        f"to freeze or crash due to high memory usage.\n\n"
+                        f"It's recommended to organize your tiles into smaller folders "
+                        f"({MAX_RECOMMENDED_FILES} or fewer files each).\n\n"
+                        f"Do you want to continue anyway?"
+                    )
+                else:
+                    message = (
+                        f"You selected {file_count} image files.\n\n"
+                        f"Loading many tileset images at once may cause the application "
+                        f"to freeze or crash due to high memory usage.\n\n"
+                        f"It's recommended to select {MAX_RECOMMENDED_FILES} or fewer files at a time.\n\n"
+                        f"Do you want to continue anyway?"
+                    )
+                
                 reply = QMessageBox.warning(
                     self,
                     "Large Number of Files",
-                    f"You selected {file_count} image files.\n\n"
-                    f"Loading many tileset images at once may cause the application "
-                    f"to freeze or crash due to high memory usage.\n\n"
-                    f"It's recommended to select 15 or fewer files at a time.\n\n"
-                    f"Do you want to continue anyway?",
+                    message,
                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                     QMessageBox.StandardButton.No
                 )
                 if reply != QMessageBox.StandardButton.Yes:
-                    self.status_bar.showMessage("Image loading cancelled")
+                    self.status_bar.showMessage("Loading cancelled")
                     return
             
             # Create progress dialog
@@ -305,13 +276,11 @@ class MainWindow(QMainWindow):
                 if progress.wasCanceled():
                     cancelled = True
             
-            tiles = ImageLoader.load_images_as_simple_tiles(
-                image_paths, progress_callback=update_progress
-            )
+            tiles = load_func(image_paths, update_progress)
             
             if cancelled:
                 progress.close()
-                self.status_bar.showMessage("Image loading cancelled")
+                self.status_bar.showMessage("Loading cancelled")
                 return
             
             # Phase 2: Building palette grid
@@ -332,10 +301,10 @@ class MainWindow(QMainWindow):
             
             if self.append_checkbox.isChecked():
                 self.tile_palette.prepend_tiles(tiles, palette_progress)
-                self.status_bar.showMessage(f"Added {len(tiles)} tiles from {file_count} image(s)")
+                self.status_bar.showMessage(f"Added {len(tiles)} tiles from {source_description}")
             else:
                 self.tile_palette.set_tiles(tiles, palette_progress)
-                self.status_bar.showMessage(f"Loaded {len(tiles)} tiles from {file_count} image(s)")
+                self.status_bar.showMessage(f"Loaded {len(tiles)} tiles from {source_description}")
             
             progress.close()
         except Exception as e:
@@ -366,7 +335,6 @@ class MainWindow(QMainWindow):
     def _on_unit_placed(self, unit, grid_x: int, grid_y: int):
         """Handle unit placement on the canvas."""
         placed_count = len(self.tile_canvas.canvas._placed_units)
-        total_cells = self.tile_canvas.canvas.grid_width * self.tile_canvas.canvas.grid_height
         self.status_bar.showMessage(
             f"Placed {unit.source_name} at ({grid_x}, {grid_y}) - "
             f"{placed_count} unit(s) on canvas"
