@@ -8,8 +8,14 @@ from typing import List, Optional
 from PySide6.QtGui import QImage
 
 from ..models.tile import Tile
-from ..models.tileset_types import TilesetType, get_unit_positions
+from ..models.tileset_types import TilesetType, get_unit_positions, TILESET_TYPES
 from ..utils.constants import TILE_SIZE
+
+
+# Dimension-based auto-detection mapping: (width, height) -> tileset type name
+AUTO_DETECT_DIMENSIONS = {
+    (768, 384): "A3",  # A3: Building autotiles (2×2 units)
+}
 
 
 class ImageLoader:
@@ -30,7 +36,7 @@ class ImageLoader:
         Args:
             image_path: Path to the source image file.
             tileset_type: If provided, extract units according to this type's layout.
-                         If None, extract as simple 48×48 grid.
+                         If None, auto-detect from dimensions or use simple 48×48 grid.
         
         Returns:
             List of Tile objects extracted from the image.
@@ -43,8 +49,16 @@ class ImageLoader:
         if image.format() != QImage.Format.Format_ARGB32:
             image = image.convertToFormat(QImage.Format.Format_ARGB32)
         
-        if tileset_type:
-            return cls._extract_by_tileset_type(image_path, image, tileset_type)
+        # Use provided type, or auto-detect from dimensions
+        effective_type = tileset_type
+        if effective_type is None:
+            dimensions = (image.width(), image.height())
+            if dimensions in AUTO_DETECT_DIMENSIONS:
+                type_name = AUTO_DETECT_DIMENSIONS[dimensions]
+                effective_type = TILESET_TYPES[type_name]
+        
+        if effective_type:
+            return cls._extract_by_tileset_type(image_path, image, effective_type)
         else:
             return cls._extract_simple_grid(image_path, image)
     

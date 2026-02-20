@@ -235,3 +235,87 @@ class TestImageLoaderWithTilesetType:
         assert len(tiles) == 32
         # All units should be 96x96 (2x2 tiles)
         assert all(t.width == 96 and t.height == 96 for t in tiles)
+
+
+class TestA3AutoDetection:
+    """Tests for automatic A3 format detection based on image dimensions."""
+    
+    @pytest.fixture
+    def temp_dir(self, qapp):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            yield tmpdir
+    
+    def _create_test_image(self, path: str, width: int, height: int):
+        image = QImage(width, height, QImage.Format.Format_ARGB32)
+        image.fill(0xFF00FFFF)  # Cyan
+        image.save(path, "PNG")
+        return path
+    
+    def test_768x384_auto_detects_as_a3(self, temp_dir):
+        """An image with A3 dimensions should auto-detect as A3 format."""
+        path = self._create_test_image(
+            os.path.join(temp_dir, "auto_a3.png"), 768, 384
+        )
+        # Load without specifying tileset type
+        tiles = ImageLoader.load_tiles_from_image(path)
+        
+        # Should have 32 units (A3 format: 8 cols × 4 rows)
+        assert len(tiles) == 32
+        
+        # All units should be 96×96 (2×2 tiles)
+        assert all(t.width == 96 and t.height == 96 for t in tiles)
+    
+    def test_a3_tiles_have_correct_positions(self, temp_dir):
+        """A3 tiles should have correct x,y positions in 96px increments."""
+        path = self._create_test_image(
+            os.path.join(temp_dir, "a3_positions.png"), 768, 384
+        )
+        tiles = ImageLoader.load_tiles_from_image(path)
+        
+        # First tile at (0, 0)
+        assert tiles[0].x == 0
+        assert tiles[0].y == 0
+        
+        # Second tile at (96, 0) - one unit to the right
+        assert tiles[1].x == 96
+        assert tiles[1].y == 0
+        
+        # 8th tile is at (7*96, 0) = (672, 0)
+        assert tiles[7].x == 672
+        assert tiles[7].y == 0
+        
+        # 9th tile is first of second row: (0, 96)
+        assert tiles[8].x == 0
+        assert tiles[8].y == 96
+    
+    def test_similar_but_different_dimensions_uses_simple_grid(self, temp_dir):
+        """Images with similar but not exact A3 dimensions should use simple grid."""
+        # Close to A3 but not exact
+        path = self._create_test_image(
+            os.path.join(temp_dir, "not_a3.png"), 768, 380
+        )
+        tiles = ImageLoader.load_tiles_from_image(path)
+        
+        # Should use simple grid: 768/48=16 cols, 380/48=7 rows (with remainder ignored)
+        # Simple grid extracts 48×48 tiles
+        assert all(t.width == 48 and t.height == 48 for t in tiles)
+    
+    def test_a3_loads_via_load_images_as_simple_tiles(self, temp_dir):
+        """A3 format should work through the load_images_as_simple_tiles method."""
+        path = self._create_test_image(
+            os.path.join(temp_dir, "a3_via_method.png"), 768, 384
+        )
+        tiles = ImageLoader.load_images_as_simple_tiles([path])
+        
+        assert len(tiles) == 32
+        assert all(t.width == 96 and t.height == 96 for t in tiles)
+    
+    def test_a3_loads_via_load_folder(self, temp_dir):
+        """A3 format should work through the load_folder_as_simple_tiles method."""
+        self._create_test_image(
+            os.path.join(temp_dir, "folder_a3.png"), 768, 384
+        )
+        tiles = ImageLoader.load_folder_as_simple_tiles(temp_dir)
+        
+        assert len(tiles) == 32
+        assert all(t.width == 96 and t.height == 96 for t in tiles)
