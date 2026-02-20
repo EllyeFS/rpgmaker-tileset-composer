@@ -17,6 +17,9 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt
 
 from ..models import TILESET_TYPES
+from ..models.tile import Tile
+from ..services.image_loader import ImageLoader
+from .tile_palette import TilePalette
 
 
 class MainWindow(QMainWindow):
@@ -100,13 +103,10 @@ class MainWindow(QMainWindow):
         # Main content area with splitter
         splitter = QSplitter(Qt.Orientation.Horizontal)
         
-        # Left panel - Tile palette (placeholder)
-        palette_placeholder = QWidget()
-        palette_layout = QVBoxLayout(palette_placeholder)
-        palette_layout.addWidget(QLabel("TILE PALETTE"))
-        palette_layout.addWidget(QLabel("(Select a source folder to load tiles)"))
-        palette_layout.addStretch()
-        splitter.addWidget(palette_placeholder)
+        # Left panel - Tile palette
+        self.tile_palette = TilePalette()
+        self.tile_palette.tile_selected.connect(self._on_tile_selected)
+        splitter.addWidget(self.tile_palette)
         
         # Right panel - Target canvas (placeholder)
         canvas_placeholder = QWidget()
@@ -116,8 +116,8 @@ class MainWindow(QMainWindow):
         canvas_layout.addStretch()
         splitter.addWidget(canvas_placeholder)
         
-        # Set initial splitter sizes (1:2 ratio)
-        splitter.setSizes([400, 800])
+        # Set initial splitter sizes (palette needs ~500px for 8 columns)
+        splitter.setSizes([500, 700])
         
         main_layout.addWidget(splitter)
     
@@ -133,7 +133,23 @@ class MainWindow(QMainWindow):
         folder = QFileDialog.getExistingDirectory(self, "Select Source Tileset Folder")
         if folder:
             self.source_folder_btn.setText(folder)
-            self.status_bar.showMessage(f"Source folder: {folder}")
+            self._load_tiles_from_folder(folder)
+    
+    def _load_tiles_from_folder(self, folder: str):
+        """Load all tiles from the selected folder."""
+        try:
+            tiles = ImageLoader.load_folder_as_simple_tiles(folder)
+            self.tile_palette.set_tiles(tiles)
+            self.status_bar.showMessage(f"Loaded {len(tiles)} tiles from {folder}")
+        except Exception as e:
+            self.status_bar.showMessage(f"Error loading tiles: {e}")
+    
+    def _on_tile_selected(self, tile: Tile):
+        """Handle tile selection from the palette."""
+        self.status_bar.showMessage(
+            f"Selected: {tile.source_name} [{tile.source_index}] "
+            f"({tile.width}×{tile.height}px)"
+        )
     
     def _on_target_type_changed(self, type_name: str):
         tileset_type = TILESET_TYPES[type_name]
