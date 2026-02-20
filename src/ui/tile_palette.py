@@ -483,6 +483,7 @@ class TilePalette(QWidget):
         """Handle tile button click - selects the entire unit.
         
         Supports multiselect with Ctrl key (restricted to same source).
+        Clicking an already-selected unit keeps the selection (for dragging).
         """
         unit = tile.unit
         if unit is None:
@@ -506,8 +507,11 @@ class TilePalette(QWidget):
                 # First selection
                 self._selected_units = [unit]
         else:
-            # Normal click: single selection
-            self._selected_units = [unit]
+            # Normal click: if clicking an already-selected unit, keep selection (for dragging)
+            # Otherwise, replace selection with just this unit
+            if unit not in self._selected_units:
+                self._selected_units = [unit]
+            # else: keep current selection intact
         
         self._last_clicked_unit = unit
         self._update_selection_visuals()
