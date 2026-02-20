@@ -194,3 +194,26 @@ class ImageLoader:
                 continue
         
         return all_tiles
+    
+    @classmethod
+    def load_images_as_simple_tiles(cls, image_paths: List[str]) -> List[Tile]:
+        """
+        Load specific images as simple 48×48 tile grids.
+        
+        Args:
+            image_paths: List of paths to image files.
+        
+        Returns:
+            List of all tiles from the specified images.
+        """
+        all_tiles = []
+        
+        for image_path in image_paths:
+            try:
+                tiles = cls.load_tiles_from_image(image_path)
+                all_tiles.extend(tiles)
+            except ValueError:
+                # Skip files that fail to load
+                continue
+        
+        return all_tiles

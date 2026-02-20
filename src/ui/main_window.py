@@ -77,10 +77,15 @@ class MainWindow(QMainWindow):
         toolbar_layout = QHBoxLayout()
         
         # Source folder selector
-        toolbar_layout.addWidget(QLabel("Source Folder:"))
-        self.source_folder_btn = QPushButton("Select Folder...")
+        toolbar_layout.addWidget(QLabel("Source:"))
+        self.source_folder_btn = QPushButton("Load Folder...")
         self.source_folder_btn.clicked.connect(self._select_source_folder)
         toolbar_layout.addWidget(self.source_folder_btn)
+        
+        # Individual image selector
+        self.load_images_btn = QPushButton("Load Images...")
+        self.load_images_btn.clicked.connect(self._select_images)
+        toolbar_layout.addWidget(self.load_images_btn)
         
         toolbar_layout.addSpacing(20)
         
@@ -163,6 +168,44 @@ class MainWindow(QMainWindow):
             tiles = ImageLoader.load_folder_as_simple_tiles(folder)
             self.tile_palette.set_tiles(tiles)
             self.status_bar.showMessage(f"Loaded {len(tiles)} tiles from {folder}")
+        except Exception as e:
+            self.status_bar.showMessage(f"Error loading tiles: {e}")
+    
+    def _select_images(self):
+        """Open file dialog to select individual image files."""
+        files, _ = QFileDialog.getOpenFileNames(
+            self,
+            "Select Tileset Images",
+            "",
+            "PNG Images (*.png);;All Files (*.*)"
+        )
+        if files:
+            self._load_tiles_from_images(files)
+    
+    def _load_tiles_from_images(self, image_paths: list):
+        """Load tiles from selected image files."""
+        try:
+            file_count = len(image_paths)
+            
+            if file_count > 10:
+                reply = QMessageBox.warning(
+                    self,
+                    "Large Number of Files",
+                    f"You selected {file_count} image files.\n\n"
+                    f"Loading many tileset images at once may cause the application "
+                    f"to freeze or crash due to high memory usage.\n\n"
+                    f"It's recommended to select 10 or fewer files at a time.\n\n"
+                    f"Do you want to continue anyway?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No
+                )
+                if reply != QMessageBox.StandardButton.Yes:
+                    self.status_bar.showMessage("Image loading cancelled")
+                    return
+            
+            tiles = ImageLoader.load_images_as_simple_tiles(image_paths)
+            self.tile_palette.set_tiles(tiles)
+            self.status_bar.showMessage(f"Loaded {len(tiles)} tiles from {file_count} image(s)")
         except Exception as e:
             self.status_bar.showMessage(f"Error loading tiles: {e}")
     

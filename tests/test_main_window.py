@@ -108,3 +108,77 @@ class TestFolderLoadingWarning:
                 main_window._load_tiles_from_folder(tmpdir)
                 
                 mock_warning.assert_called_once()
+
+
+class TestLoadMultipleImages:
+    """Tests for loading individual image files."""
+    
+    @pytest.fixture
+    def main_window(self, qtbot):
+        """Create a MainWindow instance for testing."""
+        window = MainWindow()
+        qtbot.addWidget(window)
+        return window
+    
+    def test_load_single_image(self, main_window, qapp):
+        """Loading a single image should work without warning."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            image_path = os.path.join(tmpdir, "tile.png")
+            image = QImage(48, 48, QImage.Format.Format_ARGB32)
+            image.fill(0xFF00FF00)
+            image.save(image_path, "PNG")
+            
+            with patch.object(QMessageBox, 'warning') as mock_warning:
+                main_window._load_tiles_from_images([image_path])
+                
+                mock_warning.assert_not_called()
+                assert len(main_window.tile_palette._tiles) == 1
+    
+    def test_load_multiple_images(self, main_window, qapp):
+        """Loading multiple images should combine their tiles."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            paths = []
+            for i in range(3):
+                path = os.path.join(tmpdir, f"tile_{i}.png")
+                image = QImage(96, 96, QImage.Format.Format_ARGB32)  # 4 tiles each
+                image.fill(0xFF00FF00)
+                image.save(path, "PNG")
+                paths.append(path)
+            
+            main_window._load_tiles_from_images(paths)
+            
+            # 3 images × 4 tiles each = 12 tiles
+            assert len(main_window.tile_palette._tiles) == 12
+    
+    def test_load_more_than_10_images_shows_warning(self, main_window, qapp):
+        """Loading more than 10 images should show warning."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            paths = []
+            for i in range(15):
+                path = os.path.join(tmpdir, f"tile_{i}.png")
+                image = QImage(48, 48, QImage.Format.Format_ARGB32)
+                image.fill(0xFF00FF00)
+                image.save(path, "PNG")
+                paths.append(path)
+            
+            with patch.object(QMessageBox, 'warning', return_value=QMessageBox.StandardButton.Yes) as mock_warning:
+                main_window._load_tiles_from_images(paths)
+                
+                mock_warning.assert_called_once()
+                assert len(main_window.tile_palette._tiles) == 15
+    
+    def test_cancel_large_image_load(self, main_window, qapp):
+        """Cancelling large image load should not load tiles."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            paths = []
+            for i in range(15):
+                path = os.path.join(tmpdir, f"tile_{i}.png")
+                image = QImage(48, 48, QImage.Format.Format_ARGB32)
+                image.fill(0xFF00FF00)
+                image.save(path, "PNG")
+                paths.append(path)
+            
+            with patch.object(QMessageBox, 'warning', return_value=QMessageBox.StandardButton.No):
+                main_window._load_tiles_from_images(paths)
+                
+                assert len(main_window.tile_palette._tiles) == 0
