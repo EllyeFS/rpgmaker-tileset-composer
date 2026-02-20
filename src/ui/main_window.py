@@ -104,31 +104,27 @@ class MainWindow(QMainWindow):
         toolbar_layout.addSpacing(20)
         toolbar_layout.addWidget(QLabel("Palette:"))
         
-        self.palette_unit_color_btn = QPushButton()
-        self.palette_unit_color_btn.setToolTip("Palette unit border color")
-        self.palette_unit_color_btn.setFixedSize(COLOR_BUTTON_SIZE, COLOR_BUTTON_SIZE)
-        self.palette_unit_color_btn.clicked.connect(self._pick_palette_unit_color)
+        self.palette_unit_color_btn = self._create_color_button(
+            "Palette unit border color", self._pick_palette_unit_color
+        )
         toolbar_layout.addWidget(self.palette_unit_color_btn)
         
-        self.palette_grid_color_btn = QPushButton()
-        self.palette_grid_color_btn.setToolTip("Palette grid color")
-        self.palette_grid_color_btn.setFixedSize(COLOR_BUTTON_SIZE, COLOR_BUTTON_SIZE)
-        self.palette_grid_color_btn.clicked.connect(self._pick_palette_grid_color)
+        self.palette_grid_color_btn = self._create_color_button(
+            "Palette grid color", self._pick_palette_grid_color
+        )
         toolbar_layout.addWidget(self.palette_grid_color_btn)
         
         toolbar_layout.addSpacing(10)
         toolbar_layout.addWidget(QLabel("Canvas:"))
         
-        self.canvas_unit_color_btn = QPushButton()
-        self.canvas_unit_color_btn.setToolTip("Canvas unit border color")
-        self.canvas_unit_color_btn.setFixedSize(COLOR_BUTTON_SIZE, COLOR_BUTTON_SIZE)
-        self.canvas_unit_color_btn.clicked.connect(self._pick_canvas_unit_color)
+        self.canvas_unit_color_btn = self._create_color_button(
+            "Canvas unit border color", self._pick_canvas_unit_color
+        )
         toolbar_layout.addWidget(self.canvas_unit_color_btn)
         
-        self.canvas_grid_color_btn = QPushButton()
-        self.canvas_grid_color_btn.setToolTip("Canvas grid color")
-        self.canvas_grid_color_btn.setFixedSize(COLOR_BUTTON_SIZE, COLOR_BUTTON_SIZE)
-        self.canvas_grid_color_btn.clicked.connect(self._pick_canvas_grid_color)
+        self.canvas_grid_color_btn = self._create_color_button(
+            "Canvas grid color", self._pick_canvas_grid_color
+        )
         toolbar_layout.addWidget(self.canvas_grid_color_btn)
         
         toolbar_layout.addStretch()
@@ -455,58 +451,63 @@ class MainWindow(QMainWindow):
                 )
                 self.status_bar.showMessage("Export failed")
     
+    def _create_color_button(self, tooltip: str, click_handler):
+        """Create a color picker button with consistent styling."""
+        button = QPushButton()
+        button.setToolTip(tooltip)
+        button.setFixedSize(COLOR_BUTTON_SIZE, COLOR_BUTTON_SIZE)
+        button.clicked.connect(click_handler)
+        return button
+    
+    def _update_color_button(self, button: QPushButton, color: QColor):
+        """Update a color button's appearance to show the current color."""
+        button.setStyleSheet(
+            f"background-color: {color.name()}; border: 1px solid #333;"
+        )
+    
     def _update_color_buttons(self):
         """Update the color picker buttons to show current colors."""
-        # Palette colors
-        palette_unit_color = self.tile_palette.unit_border_color
-        self.palette_unit_color_btn.setStyleSheet(
-            f"background-color: {palette_unit_color.name()}; border: 1px solid #333;"
-        )
-        
-        palette_grid_color = self.tile_palette.grid_border_color
-        self.palette_grid_color_btn.setStyleSheet(
-            f"background-color: {palette_grid_color.name()}; border: 1px solid #333;"
-        )
-        
-        # Canvas colors
-        canvas_unit_color = self.tile_canvas.unit_grid_color
-        self.canvas_unit_color_btn.setStyleSheet(
-            f"background-color: {canvas_unit_color.name()}; border: 1px solid #333;"
-        )
-        
-        canvas_grid_color = self.tile_canvas.grid_color
-        self.canvas_grid_color_btn.setStyleSheet(
-            f"background-color: {canvas_grid_color.name()}; border: 1px solid #333;"
-        )
+        self._update_color_button(self.palette_unit_color_btn, self.tile_palette.unit_border_color)
+        self._update_color_button(self.palette_grid_color_btn, self.tile_palette.grid_border_color)
+        self._update_color_button(self.canvas_unit_color_btn, self.tile_canvas.unit_grid_color)
+        self._update_color_button(self.canvas_grid_color_btn, self.tile_canvas.grid_color)
+    
+    def _pick_color(self, dialog_title: str, get_current_color, set_new_color):
+        """Generic color picker handler."""
+        current = get_current_color()
+        color = QColorDialog.getColor(current, self, dialog_title)
+        if color.isValid():
+            set_new_color(color)
+            self._update_color_buttons()
     
     def _pick_palette_unit_color(self):
         """Open color picker for palette unit border color."""
-        current = self.tile_palette.unit_border_color
-        color = QColorDialog.getColor(current, self, "Palette Unit Border Color")
-        if color.isValid():
-            self.tile_palette.set_unit_border_color(color)
-            self._update_color_buttons()
+        self._pick_color(
+            "Palette Unit Border Color",
+            lambda: self.tile_palette.unit_border_color,
+            self.tile_palette.set_unit_border_color
+        )
     
     def _pick_palette_grid_color(self):
         """Open color picker for palette grid color."""
-        current = self.tile_palette.grid_border_color
-        color = QColorDialog.getColor(current, self, "Palette Grid Color")
-        if color.isValid():
-            self.tile_palette.set_grid_border_color(color)
-            self._update_color_buttons()
+        self._pick_color(
+            "Palette Grid Color",
+            lambda: self.tile_palette.grid_border_color,
+            self.tile_palette.set_grid_border_color
+        )
     
     def _pick_canvas_unit_color(self):
         """Open color picker for canvas unit border color."""
-        current = self.tile_canvas.unit_grid_color
-        color = QColorDialog.getColor(current, self, "Canvas Unit Border Color")
-        if color.isValid():
-            self.tile_canvas.set_unit_grid_color(color)
-            self._update_color_buttons()
+        self._pick_color(
+            "Canvas Unit Border Color",
+            lambda: self.tile_canvas.unit_grid_color,
+            self.tile_canvas.set_unit_grid_color
+        )
     
     def _pick_canvas_grid_color(self):
         """Open color picker for canvas grid color."""
-        current = self.tile_canvas.grid_color
-        color = QColorDialog.getColor(current, self, "Canvas Grid Color")
-        if color.isValid():
-            self.tile_canvas.set_grid_color(color)
-            self._update_color_buttons()
+        self._pick_color(
+            "Canvas Grid Color",
+            lambda: self.tile_canvas.grid_color,
+            self.tile_canvas.set_grid_color
+        )
