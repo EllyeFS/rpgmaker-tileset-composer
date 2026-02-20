@@ -55,23 +55,6 @@ class MainWindow(QMainWindow):
         file_menu.addAction("&Export PNG...", self._export_png)
         file_menu.addSeparator()
         file_menu.addAction("E&xit", self.close)
-        
-        # Edit menu
-        edit_menu = menu_bar.addMenu("&Edit")
-        edit_menu.addAction("&Undo", self._undo)
-        edit_menu.addAction("&Redo", self._redo)
-        edit_menu.addSeparator()
-        edit_menu.addAction("&Clear Canvas", self._clear_canvas)
-        
-        # View menu
-        view_menu = menu_bar.addMenu("&View")
-        view_menu.addAction("Zoom &In", self._zoom_in)
-        view_menu.addAction("Zoom &Out", self._zoom_out)
-        view_menu.addAction("&Reset Zoom", self._zoom_reset)
-        
-        # Help menu
-        help_menu = menu_bar.addMenu("&Help")
-        help_menu.addAction("&About", self._show_about)
     
     def _setup_ui(self):
         """Setup the main UI layout."""
@@ -465,44 +448,3 @@ class MainWindow(QMainWindow):
                     QMessageBox.StandardButton.Ok
                 )
                 self.status_bar.showMessage("Export failed")
-    
-    def _undo(self):
-        self.status_bar.showMessage("Undo")
-    
-    def _redo(self):
-        self.status_bar.showMessage("Redo")
-    
-    def _clear_canvas(self):
-        """Clear all tiles from the canvas."""
-        if self.tile_canvas.is_empty():
-            self.status_bar.showMessage("Canvas is already empty")
-            return
-        
-        reply = QMessageBox.question(
-            self,
-            "Clear Canvas",
-            "Are you sure you want to clear all tiles from the canvas?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No
-        )
-        if reply == QMessageBox.StandardButton.Yes:
-            self.tile_canvas.clear()
-            self.status_bar.showMessage("Canvas cleared")
-    
-    def _zoom_in(self):
-        self.status_bar.showMessage("Zoom in")
-    
-    def _zoom_out(self):
-        self.status_bar.showMessage("Zoom out")
-    
-    def _zoom_reset(self):
-        self.status_bar.showMessage("Zoom reset")
-    
-    def _show_about(self):
-        from PySide6.QtWidgets import QMessageBox
-        QMessageBox.about(
-            self,
-            "About Tileset Composer",
-            "RPG Maker MZ Tileset Composer\n\n"
-            "A visual tool for creating and composing tilesets."
-        )
