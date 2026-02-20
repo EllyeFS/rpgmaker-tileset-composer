@@ -46,6 +46,8 @@ class TileCanvasWidget(QWidget):
     DEFAULT_UNIT_GRID_COLOR = QColor("#000000")
     
     DROP_HIGHLIGHT_COLOR = QColor(52, 152, 219, 100)
+    SELECTION_BORDER_COLOR = QColor("#3498db")  # Blue selection border
+    SELECTION_BORDER_WIDTH = 3
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -64,6 +66,9 @@ class TileCanvasWidget(QWidget):
         # Placed units: maps (grid_x, grid_y) -> TileUnit
         # Only stores the top-left position of each placed unit
         self._placed_units: Dict[Tuple[int, int], TileUnit] = {}
+        
+        # Canvas selection state for multiselect
+        self._selected_positions: List[Tuple[int, int]] = []  # Top-left positions of selected units
         
         # Current drop hover position (for visual feedback)
         self._drop_hover_pos: Optional[Tuple[int, int]] = None
@@ -100,6 +105,7 @@ class TileCanvasWidget(QWidget):
         """Set the tileset type and resize the canvas accordingly."""
         self._tileset_type = tileset_type
         self._placed_units.clear()  # Clear placed tiles when changing type
+        self._selected_positions.clear()  # Clear selection when changing type
         self._update_unit_positions()
         self._update_size()
         self.update()
@@ -200,6 +206,23 @@ class TileCanvasWidget(QWidget):
         for (grid_x, grid_y), unit in self._placed_units.items():
             self._draw_unit(painter, unit, grid_x, grid_y)
         
+        # Draw selection borders for selected units
+        if self._selected_positions:
+            pen = QPen(self.SELECTION_BORDER_COLOR)
+            pen.setWidth(self.SELECTION_BORDER_WIDTH)
+            painter.setPen(pen)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            
+            for pos in self._selected_positions:
+                if pos in self._placed_units:
+                    unit = self._placed_units[pos]
+                    px = pos[0] * TILE_SIZE
+                    py = pos[1] * TILE_SIZE
+                    pw = unit.grid_width * TILE_SIZE
+                    ph = unit.grid_height * TILE_SIZE
+                    # Draw border slightly inside to avoid clipping
+                    painter.drawRect(px + 1, py + 1, pw - 2, ph - 2)
+        
         # Draw drop hover preview (only if valid)
         if self._drop_hover_pos and self._drop_hover_units and self._drop_hover_valid:
             base_gx, base_gy = self._drop_hover_pos
@@ -295,7 +318,10 @@ class TileCanvasWidget(QWidget):
             painter.drawPixmap(px, py, tile.pixmap)
     
     def mousePressEvent(self, event):
-        """Handle mouse click to select a grid cell or start drag."""
+        """Handle mouse click to select a grid cell or start drag.
+        
+        Supports multiselect with Ctrl key for placed units.
+        """
         if event.button() == Qt.MouseButton.LeftButton:
             pos = event.position().toPoint()
             grid_x = pos.x() // TILE_SIZE
@@ -305,15 +331,37 @@ class TileCanvasWidget(QWidget):
             if 0 <= grid_x < self.grid_width and 0 <= grid_y < self.grid_height:
                 # Check if there's a unit at this position
                 unit_info = self._find_unit_at_cell(grid_x, grid_y)
+                
                 if unit_info:
-                    # Start tracking for potential drag
-                    self._drag_start_pos = pos
+                    unit_pos, unit = unit_info
+                    modifiers = event.modifiers()
+                    
+                    if modifiers & Qt.KeyboardModifier.ControlModifier:
+                        # Ctrl+Click: toggle selection
+                        if unit_pos in self._selected_positions:
+                            self._selected_positions.remove(unit_pos)
+                        else:
+                            self._selected_positions.append(unit_pos)
+                        self.update()
+                        self._drag_start_pos = None  # Don't start drag on Ctrl+Click
+                    else:
+                        # Normal click: if clicking already-selected unit, keep selection
+                        # Otherwise, select only this unit
+                        if unit_pos not in self._selected_positions:
+                            self._selected_positions = [unit_pos]
+                            self.update()
+                        # Start tracking for potential drag
+                        self._drag_start_pos = pos
                 else:
+                    # Clicked empty space - clear selection
+                    if self._selected_positions:
+                        self._selected_positions.clear()
+                        self.update()
                     self._drag_start_pos = None
                     self.cell_clicked.emit(grid_x, grid_y)
     
     def mouseMoveEvent(self, event):
-        """Handle mouse move to start dragging placed units."""
+        """Handle mouse move to start dragging placed units (supports multiselect)."""
         if not (event.buttons() & Qt.MouseButton.LeftButton):
             return
         if self._drag_start_pos is None:
@@ -333,14 +381,60 @@ class TileCanvasWidget(QWidget):
             self._drag_start_pos = None
             return
         
-        unit_pos, unit = unit_info
+        clicked_pos, clicked_unit = unit_info
         
-        # Remove the unit from canvas before starting drag
-        del self._placed_units[unit_pos]
+        # Gather all selected units for drag (or just the clicked one if nothing selected)
+        if self._selected_positions and clicked_pos in self._selected_positions:
+            # Multi-unit drag
+            drag_positions = self._selected_positions.copy()
+            drag_units = [self._placed_units[pos] for pos in drag_positions]
+        else:
+            # Single unit drag
+            drag_positions = [clicked_pos]
+            drag_units = [clicked_unit]
+        
+        # Remove all dragged units from canvas before starting drag
+        for pos in drag_positions:
+            if pos in self._placed_units:
+                del self._placed_units[pos]
+        self._selected_positions.clear()  # Clear selection when dragging
         self.update()
         
-        # Create drag pixmap
-        drag_pixmap = unit.to_pixmap()
+        # Create drag pixmap (composite if multiple units)
+        if len(drag_units) == 1:
+            # Single unit - simple pixmap
+            drag_pixmap = drag_units[0].to_pixmap()
+            hotspot = QPoint(TILE_SIZE // 2, TILE_SIZE // 2)
+        else:
+            # Multiple units - create composite pixmap
+            # Find bounding box
+            min_x = min(pos[0] * TILE_SIZE for pos in drag_positions)
+            min_y = min(pos[1] * TILE_SIZE for pos in drag_positions)
+            max_x = max((pos[0] + self._placed_units.get(pos, drag_units[i]).grid_width) * TILE_SIZE 
+                       for i, pos in enumerate(drag_positions))
+            max_y = max((pos[1] + self._placed_units.get(pos, drag_units[i]).grid_height) * TILE_SIZE 
+                       for i, pos in enumerate(drag_positions))
+            
+            width = max_x - min_x
+            height = max_y - min_y
+            
+            # Create composite pixmap
+            drag_pixmap = QPixmap(width, height)
+            drag_pixmap.fill(Qt.GlobalColor.transparent)
+            
+            painter = QPainter(drag_pixmap)
+            for i, (pos, unit) in enumerate(zip(drag_positions, drag_units)):
+                unit_pixmap = unit.to_pixmap()
+                x = pos[0] * TILE_SIZE - min_x
+                y = pos[1] * TILE_SIZE - min_y
+                painter.drawPixmap(x, y, unit_pixmap)
+            painter.end()
+            
+            # Hotspot at the clicked unit's position within the composite
+            hotspot = QPoint(
+                clicked_pos[0] * TILE_SIZE - min_x + TILE_SIZE // 2,
+                clicked_pos[1] * TILE_SIZE - min_y + TILE_SIZE // 2
+            )
         
         # Create drag object
         drag = QDrag(self)
@@ -348,17 +442,17 @@ class TileCanvasWidget(QWidget):
         mime_data.setData(TILE_UNIT_MIME_TYPE, b"")
         drag.setMimeData(mime_data)
         drag.setPixmap(drag_pixmap)
-        drag.setHotSpot(QPoint(TILE_SIZE // 2, TILE_SIZE // 2))
+        drag.setHotSpot(hotspot)
         
-        # Store unit in module-level variable
+        # Store units in module-level variable
         self._dragging_from_canvas = True
-        _set_drag_units([unit])  # Wrap in list for API consistency
+        _set_drag_units(drag_units)
         
         # Execute drag
         result = drag.exec(Qt.DropAction.MoveAction | Qt.DropAction.CopyAction)
         
-        # If drag was not accepted (dropped outside), unit is discarded
-        # If dropped on canvas, dropEvent will have placed it
+        # If drag was not accepted (dropped outside), units are discarded
+        # If dropped on canvas, dropEvent will have placed them
         _set_drag_units([])
         self._dragging_from_canvas = False
         self._drag_start_pos = None
@@ -504,6 +598,7 @@ class TileCanvasWidget(QWidget):
     def clear(self):
         """Remove all placed units from the canvas."""
         self._placed_units.clear()
+        self._selected_positions.clear()
         self.update()
     
     def render_to_image(self) -> QPixmap:
