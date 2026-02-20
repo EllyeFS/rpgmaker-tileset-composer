@@ -15,7 +15,8 @@ from ..utils.constants import TILE_SIZE
 class ImageLoader:
     """Service for loading images and extracting tiles/units."""
     
-    SUPPORTED_EXTENSIONS = {'.png', '.PNG'}
+    # Use lowercase only - glob is case-insensitive on Windows anyway
+    SUPPORTED_EXTENSIONS = {'.png'}
     
     @classmethod
     def load_tiles_from_image(
@@ -167,9 +168,10 @@ class ImageLoader:
         if not folder.is_dir():
             return []
         
-        images = []
+        # Use a set to avoid duplicates (case-insensitive filesystems)
+        images = set()
         for ext in cls.SUPPORTED_EXTENSIONS:
-            images.extend(str(p) for p in folder.glob(f'*{ext}'))
+            images.update(str(p) for p in folder.glob(f'*{ext}'))
         
         return sorted(images)
     
