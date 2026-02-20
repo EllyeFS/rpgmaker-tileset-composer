@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QMenuBar,
     QMenu,
     QMessageBox,
+    QCheckBox,
 )
 from PySide6.QtCore import Qt
 
@@ -76,16 +77,21 @@ class MainWindow(QMainWindow):
         # Toolbar area
         toolbar_layout = QHBoxLayout()
         
-        # Source folder selector
+        # Individual image selector
         toolbar_layout.addWidget(QLabel("Source:"))
+        self.load_images_btn = QPushButton("Load Images...")
+        self.load_images_btn.clicked.connect(self._select_images)
+        toolbar_layout.addWidget(self.load_images_btn)
+        
+        # Source folder selector
         self.source_folder_btn = QPushButton("Load Folder...")
         self.source_folder_btn.clicked.connect(self._select_source_folder)
         toolbar_layout.addWidget(self.source_folder_btn)
         
-        # Individual image selector
-        self.load_images_btn = QPushButton("Load Images...")
-        self.load_images_btn.clicked.connect(self._select_images)
-        toolbar_layout.addWidget(self.load_images_btn)
+        # Append checkbox
+        self.append_checkbox = QCheckBox("Append to palette")
+        self.append_checkbox.setToolTip("Keep existing tiles and add new ones to the top")
+        toolbar_layout.addWidget(self.append_checkbox)
         
         toolbar_layout.addSpacing(20)
         
@@ -166,8 +172,12 @@ class MainWindow(QMainWindow):
                     return
             
             tiles = ImageLoader.load_folder_as_simple_tiles(folder)
-            self.tile_palette.set_tiles(tiles)
-            self.status_bar.showMessage(f"Loaded {len(tiles)} tiles from {folder}")
+            if self.append_checkbox.isChecked():
+                self.tile_palette.prepend_tiles(tiles)
+                self.status_bar.showMessage(f"Added {len(tiles)} tiles from {folder}")
+            else:
+                self.tile_palette.set_tiles(tiles)
+                self.status_bar.showMessage(f"Loaded {len(tiles)} tiles from {folder}")
         except Exception as e:
             self.status_bar.showMessage(f"Error loading tiles: {e}")
     
@@ -204,8 +214,12 @@ class MainWindow(QMainWindow):
                     return
             
             tiles = ImageLoader.load_images_as_simple_tiles(image_paths)
-            self.tile_palette.set_tiles(tiles)
-            self.status_bar.showMessage(f"Loaded {len(tiles)} tiles from {file_count} image(s)")
+            if self.append_checkbox.isChecked():
+                self.tile_palette.prepend_tiles(tiles)
+                self.status_bar.showMessage(f"Added {len(tiles)} tiles from {file_count} image(s)")
+            else:
+                self.tile_palette.set_tiles(tiles)
+                self.status_bar.showMessage(f"Loaded {len(tiles)} tiles from {file_count} image(s)")
         except Exception as e:
             self.status_bar.showMessage(f"Error loading tiles: {e}")
     

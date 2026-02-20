@@ -129,10 +129,26 @@ class TilePalette(QWidget):
         self._tile_layout.addWidget(self._placeholder, 0, 0)
     
     def set_tiles(self, tiles: List[Tile]):
-        """Set the tiles to display in the palette."""
+        """Set the tiles to display in the palette (replaces existing)."""
         self._tiles = tiles
         self._selected_tile = None
         self._rebuild_grid()
+    
+    def prepend_tiles(self, tiles: List[Tile]):
+        """Add tiles to the top of the palette (keeps existing, skips duplicates).
+        
+        Tiles from source images already in the palette are not added again.
+        """
+        # Get set of source paths already in palette
+        existing_sources = {t.source_path for t in self._tiles}
+        
+        # Filter out tiles from sources that are already loaded
+        new_tiles = [t for t in tiles if t.source_path not in existing_sources]
+        
+        if new_tiles:
+            self._tiles = new_tiles + self._tiles
+            self._selected_tile = None
+            self._rebuild_grid()
     
     def clear(self):
         """Clear all tiles from the palette."""

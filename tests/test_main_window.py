@@ -2,6 +2,7 @@
 
 import pytest
 import tempfile
+import shutil
 import os
 from unittest.mock import patch, MagicMock
 
@@ -182,3 +183,178 @@ class TestLoadMultipleImages:
                 main_window._load_tiles_from_images(paths)
                 
                 assert len(main_window.tile_palette._tiles) == 0
+
+
+class TestAppendToPalette:
+    """Tests for the append to palette checkbox functionality."""
+    
+    @pytest.fixture
+    def main_window(self, qtbot):
+        """Create a MainWindow instance for testing."""
+        window = MainWindow()
+        qtbot.addWidget(window)
+        return window
+    
+    def test_append_unchecked_replaces_tiles(self, main_window, qapp):
+        """With append unchecked, loading should replace existing tiles."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Load first batch
+            path1 = os.path.join(tmpdir, "tile1.png")
+            image = QImage(48, 48, QImage.Format.Format_ARGB32)
+            image.fill(0xFF00FF00)
+            image.save(path1, "PNG")
+            
+            main_window.append_checkbox.setChecked(False)
+            main_window._load_tiles_from_images([path1])
+            assert len(main_window.tile_palette._tiles) == 1
+            
+            # Load second batch - should replace
+            path2 = os.path.join(tmpdir, "tile2.png")
+            image2 = QImage(96, 96, QImage.Format.Format_ARGB32)  # 4 tiles
+            image2.fill(0xFFFF0000)
+            image2.save(path2, "PNG")
+            
+            main_window._load_tiles_from_images([path2])
+            assert len(main_window.tile_palette._tiles) == 4
+    
+    def test_append_checked_adds_to_top(self, main_window, qapp):
+        """With append checked, loading should prepend new tiles."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Load first batch
+            path1 = os.path.join(tmpdir, "first.png")
+            image1 = QImage(48, 48, QImage.Format.Format_ARGB32)
+            image1.fill(0xFF00FF00)
+            image1.save(path1, "PNG")
+            
+            main_window.append_checkbox.setChecked(False)
+            main_window._load_tiles_from_images([path1])
+            assert len(main_window.tile_palette._tiles) == 1
+            first_tile_source = main_window.tile_palette._tiles[0].source_name
+            
+            # Load second batch with append checked
+            path2 = os.path.join(tmpdir, "second.png")
+            image2 = QImage(96, 96, QImage.Format.Format_ARGB32)  # 4 tiles
+            image2.fill(0xFFFF0000)
+            image2.save(path2, "PNG")
+            
+            main_window.append_checkbox.setChecked(True)
+            main_window._load_tiles_from_images([path2])
+            
+            # Should have 5 tiles total (1 + 4)
+            assert len(main_window.tile_palette._tiles) == 5
+            
+            # New tiles should be at the top (prepended)
+            assert main_window.tile_palette._tiles[0].source_name == "second.png"
+            # Old tile should still be there at the end
+            assert main_window.tile_palette._tiles[4].source_name == "first.png"
+    
+    def test_append_works_with_folder_loading(self, main_window, qapp):
+        """Append should also work when loading from folder."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create initial image
+            path1 = os.path.join(tmpdir, "initial.png")
+            image1 = QImage(48, 48, QImage.Format.Format_ARGB32)
+            image1.fill(0xFF00FF00)
+            image1.save(path1, "PNG")
+            
+            # Load it first
+            main_window.append_checkbox.setChecked(False)
+            main_window._load_tiles_from_folder(tmpdir)
+            initial_count = len(main_window.tile_palette._tiles)
+            
+            # Create second folder
+            tmpdir2 = tempfile.mkdtemp()
+            try:
+                path2 = os.path.join(tmpdir2, "added.png")
+                image2 = QImage(96, 96, QImage.Format.Format_ARGB32)
+                image2.fill(0xFFFF0000)
+                image2.save(path2, "PNG")
+                
+                # Load with append
+                main_window.append_checkbox.setChecked(True)
+                main_window._load_tiles_from_folder(tmpdir2)
+                
+                # Should have combined tiles
+                assert len(main_window.tile_palette._tiles) == initial_count + 4
+            finally:
+                shutil.rmtree(tmpdir2)
+
+
+class TestDuplicateTileBehavior:
+    """Tests for loading the same image multiple times."""
+    
+    @pytest.fixture
+    def main_window(self, qtbot):
+        window = MainWindow()
+        qtbot.addWidget(window)
+        return window
+    
+    def test_same_image_with_append_skips_duplicates(self, main_window, qapp):
+        """Loading the same image twice with append should skip duplicates."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, "tile.png")
+            image = QImage(48, 48, QImage.Format.Format_ARGB32)
+            image.fill(0xFF00FF00)
+            image.save(path, "PNG")
+            
+            # Load first time
+            main_window.append_checkbox.setChecked(False)
+            main_window._load_tiles_from_images([path])
+            assert len(main_window.tile_palette._tiles) == 1
+            
+            # Load same image again with append
+            main_window.append_checkbox.setChecked(True)
+            main_window._load_tiles_from_images([path])
+            
+            # Duplicates should be skipped
+            assert len(main_window.tile_palette._tiles) == 1
+    
+    def test_different_images_with_append_adds_all(self, main_window, qapp):
+        """Loading different images with append should add all of them."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path1 = os.path.join(tmpdir, "tile1.png")
+            image1 = QImage(48, 48, QImage.Format.Format_ARGB32)
+            image1.fill(0xFF00FF00)
+            image1.save(path1, "PNG")
+            
+            path2 = os.path.join(tmpdir, "tile2.png")
+            image2 = QImage(48, 48, QImage.Format.Format_ARGB32)
+            image2.fill(0xFFFF0000)
+            image2.save(path2, "PNG")
+            
+            # Load first image
+            main_window.append_checkbox.setChecked(False)
+            main_window._load_tiles_from_images([path1])
+            assert len(main_window.tile_palette._tiles) == 1
+            
+            # Load different image with append
+            main_window.append_checkbox.setChecked(True)
+            main_window._load_tiles_from_images([path2])
+            
+            # Both should be present
+            assert len(main_window.tile_palette._tiles) == 2
+    
+    def test_mixed_new_and_existing_images(self, main_window, qapp):
+        """Loading a mix of new and existing images should only add new ones."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path1 = os.path.join(tmpdir, "existing.png")
+            image1 = QImage(48, 48, QImage.Format.Format_ARGB32)
+            image1.fill(0xFF00FF00)
+            image1.save(path1, "PNG")
+            
+            path2 = os.path.join(tmpdir, "new.png")
+            image2 = QImage(48, 48, QImage.Format.Format_ARGB32)
+            image2.fill(0xFFFF0000)
+            image2.save(path2, "PNG")
+            
+            # Load first image
+            main_window.append_checkbox.setChecked(False)
+            main_window._load_tiles_from_images([path1])
+            assert len(main_window.tile_palette._tiles) == 1
+            
+            # Load both (one existing, one new) with append
+            main_window.append_checkbox.setChecked(True)
+            main_window._load_tiles_from_images([path1, path2])
+            
+            # Should have 2 tiles (existing + new, no duplicate of existing)
+            assert len(main_window.tile_palette._tiles) == 2
