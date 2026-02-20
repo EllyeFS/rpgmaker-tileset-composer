@@ -1,8 +1,8 @@
 """
-Tile model representing an extracted 48×48 tile from a source image.
+Tile model representing an extracted tile from a source image.
 
-All tiles are 48×48 pixels. Larger units (autotiles) are represented
-as multiple Tiles grouped by a TileUnit.
+All tiles are TILE_SIZE × TILE_SIZE pixels. Larger units (autotiles) are
+represented as multiple Tiles grouped by a TileUnit.
 """
 
 from dataclasses import dataclass, field
@@ -19,10 +19,10 @@ if TYPE_CHECKING:
 @dataclass
 class Tile:
     """
-    Represents a single 48×48 pixel tile extracted from a source image.
+    Represents a single tile extracted from a source image.
     
-    All tiles are exactly 48×48 pixels. For larger units (autotiles),
-    multiple Tiles are grouped together by a TileUnit.
+    Each tile is exactly TILE_SIZE × TILE_SIZE pixels. For larger units
+    (autotiles), multiple Tiles are grouped together by a TileUnit.
     """
     # Source information
     source_path: str          # Path to the source image file
@@ -43,12 +43,12 @@ class Tile:
     
     @property
     def width(self) -> int:
-        """Tile width is always TILE_SIZE (48)."""
+        """Tile width in pixels (always TILE_SIZE)."""
         return TILE_SIZE
     
     @property
     def height(self) -> int:
-        """Tile height is always TILE_SIZE (48)."""
+        """Tile height in pixels (always TILE_SIZE)."""
         return TILE_SIZE
     
     @property

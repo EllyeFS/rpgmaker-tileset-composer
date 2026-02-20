@@ -1,8 +1,8 @@
 """
 Tile palette widget for displaying and selecting source tiles.
 
-Tiles are always displayed on a 48×48 grid. Larger units (autotiles)
-are displayed as multiple cells that select together as a group.
+Tiles are displayed on a grid where each cell is TILE_SIZE × TILE_SIZE.
+Larger units (autotiles) span multiple cells and select as a group.
 """
 
 from typing import List, Optional, Dict, Callable
@@ -79,7 +79,7 @@ class TileButton(QFrame):
     """
     A clickable tile display widget.
     
-    Shows a single 48×48 tile and emits a signal when clicked.
+    Shows a single tile and emits a signal when clicked.
     The signal includes the tile's parent unit for group selection.
     Supports drag operations to move units to the canvas.
     
@@ -88,14 +88,12 @@ class TileButton(QFrame):
     
     clicked = Signal(Tile)
     
-    # Default border colors
     DEFAULT_UNIT_BORDER = QColor("#000000")
     DEFAULT_GRID_BORDER = QColor("#646464")
     SELECTED_BORDER = QColor("#3498db")
     
-    # Border thickness
-    STRONG_BORDER_WIDTH = 2  # Unit edges
-    LIGHT_BORDER_WIDTH = 1   # Internal edges
+    STRONG_BORDER_WIDTH = 2
+    LIGHT_BORDER_WIDTH = 1
     
     def __init__(self, tile: Tile, edge_top: bool = True, edge_bottom: bool = True,
                  edge_left: bool = True, edge_right: bool = True,
@@ -225,7 +223,7 @@ class TilePalette(QWidget):
     """
     A scrollable palette displaying tiles from source images.
     
-    Tiles are displayed in a 48×48 grid, preserving their source layout.
+    Tiles are displayed in a grid preserving their source layout.
     Clicking a tile selects its entire unit (for multi-tile autotiles).
     """
     

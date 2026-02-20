@@ -37,17 +37,15 @@ class TileCanvasWidget(QWidget):
     # Signal emitted when a unit is placed: (unit, grid_x, grid_y)
     unit_placed = Signal(TileUnit, int, int)
     
-    # Checkerboard colors for transparency indication
+    # Checkerboard pattern for transparency indication
     CHECKER_LIGHT = QColor(255, 255, 255)
     CHECKER_DARK = QColor(204, 204, 204)
-    CHECKER_SIZE = 8  # Size of each checker square
+    CHECKER_SIZE = 8
     
-    # Default grid line colors
     DEFAULT_GRID_COLOR = QColor("#646464")
     DEFAULT_UNIT_GRID_COLOR = QColor("#000000")
     
-    # Drop hover highlight color
-    DROP_HIGHLIGHT_COLOR = QColor(52, 152, 219, 100)  # Semi-transparent blue
+    DROP_HIGHLIGHT_COLOR = QColor(52, 152, 219, 100)
     
     def __init__(self, parent=None):
         super().__init__(parent)

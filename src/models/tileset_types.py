@@ -15,8 +15,8 @@ from ..utils.constants import TILE_SIZE
 @dataclass(frozen=True)
 class UnitDefinition:
     """Defines a unit type within a tileset (size in tiles)."""
-    width: int   # Width in tiles
-    height: int  # Height in tiles
+    width: int
+    height: int
     
     @property
     def pixel_width(self) -> int:
@@ -33,23 +33,16 @@ class TilesetType:
     Defines a tileset format.
     
     For simple grids (A5, B-E): single unit type, uniform grid.
-    For complex layouts (A1-A4): row layouts define the pattern per row.
+    For complex layouts (A2-A4): row layouts define the pattern per row.
     
     Uses even_row_layout for rows 0, 2, 4... and odd_row_layout for rows 1, 3, 5...
     For most tilesets these are identical; A4 uses different layouts for alternating rows.
     """
     name: str
-    width: int   # Image width in pixels
-    height: int  # Image height in pixels
-    
-    # Layout pattern for even unit-rows (0, 2, 4, ...)
+    width: int
+    height: int
     even_row_layout: Tuple[UnitDefinition, ...]
-    
-    # Layout pattern for odd unit-rows (1, 3, 5, ...)
-    # For most tilesets, this equals even_row_layout
     odd_row_layout: Tuple[UnitDefinition, ...]
-    
-    # Total number of unit rows
     unit_rows: int
     
     @property
@@ -65,18 +58,15 @@ class TilesetType:
         return total
 
 
-# Unit size definitions
-UNIT_1x1 = UnitDefinition(1, 1)    # Single tile (48×48)
-UNIT_2x2 = UnitDefinition(2, 2)    # 96×96 (A3, A4 wall face)
-UNIT_2x3 = UnitDefinition(2, 3)    # 96×144 (A2, A4 wall top)
+# Unit size definitions (dimensions in tiles)
+UNIT_1x1 = UnitDefinition(1, 1)
+UNIT_2x2 = UnitDefinition(2, 2)
+UNIT_2x3 = UnitDefinition(2, 3)
 
 
 # Tileset type definitions
 TILESET_TYPES = {
-    # A1/A2: Ground autotiles - 768×576
-    # A1 (animated) and A2 (ground) share dimensions; we use A2's simpler 2×3 layout.
-    # RPG Maker's A1 animated tiles appear as static 2×3 units when loaded this way.
-    # 4 rows of 2×3 units, 8 per row
+    # A2 also handles A1 images (same dimensions, compatible 2×3 unit layout)
     "A2": TilesetType(
         name="A2",
         width=768,
@@ -85,9 +75,6 @@ TILESET_TYPES = {
         odd_row_layout=(UNIT_2x3,),
         unit_rows=4,
     ),
-    
-    # A3: Building autotiles - 768×384
-    # 4 rows of 2×2 units, 8 per row
     "A3": TilesetType(
         name="A3",
         width=768,
@@ -96,21 +83,15 @@ TILESET_TYPES = {
         odd_row_layout=(UNIT_2x2,),
         unit_rows=4,
     ),
-    
-    # A4: Wall autotiles - 768×720
-    # Alternating rows: wall tops (2×3) on even rows, wall faces (2×2) on odd rows
-    # 6 unit rows total (3 wall tops + 3 wall faces)
+    # A4 uses alternating row layouts for wall tops (2×3) and faces (2×2)
     "A4": TilesetType(
         name="A4",
         width=768,
         height=720,
-        even_row_layout=(UNIT_2x3,),   # Wall tops
-        odd_row_layout=(UNIT_2x2,),    # Wall faces
+        even_row_layout=(UNIT_2x3,),
+        odd_row_layout=(UNIT_2x2,),
         unit_rows=6,
     ),
-    
-    # A5: Normal tiles - 384×768
-    # 8×16 grid of individual tiles
     "A5": TilesetType(
         name="A5",
         width=384,
@@ -119,9 +100,7 @@ TILESET_TYPES = {
         odd_row_layout=(UNIT_1x1,),
         unit_rows=16,
     ),
-    # B-E: Upper layer tiles - 768×768
-    # 16×16 grid of individual tiles
-    # B/C/D/E are identical in format; we use a single "B" type for all.
+    # B represents B/C/D/E (identical format)
     "B": TilesetType(
         name="B",
         width=768,

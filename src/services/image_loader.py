@@ -1,7 +1,7 @@
 """
 Image loading service for extracting tiles and units from source images.
 
-All images are sliced into 48×48 tiles, which are then grouped into TileUnits
+Images are sliced into TILE_SIZE × TILE_SIZE tiles, then grouped into TileUnits
 according to the tileset type. Simple grids have 1×1 units, autotiles have
 larger units (2×2, 2×3, etc.).
 """
@@ -42,8 +42,8 @@ class ImageLoader:
         """
         Load an image and extract tile units from it.
         
-        All images are sliced into 48×48 tiles, then grouped into units
-        according to the tileset type.
+        Images are sliced into tiles (TILE_SIZE × TILE_SIZE), then grouped
+        into units according to the tileset type.
         
         Args:
             image_path: Path to the source image file.
@@ -85,7 +85,7 @@ class ImageLoader:
         image: QImage,
     ) -> List[List[Tile]]:
         """
-        Extract all 48×48 tiles from an image into a 2D grid.
+        Extract all tiles from an image into a 2D grid.
         
         Returns:
             2D list of tiles indexed as tile_grid[row][col]

@@ -169,8 +169,6 @@ class MainWindow(QMainWindow):
         self.setStatusBar(self.status_bar)
         self.status_bar.showMessage("Ready")
     
-    # Slot methods (stubs for now)
-    
     def _select_source_folder(self):
         folder = QFileDialog.getExistingDirectory(self, "Select Source Tileset Folder")
         if folder:

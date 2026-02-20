@@ -1,8 +1,8 @@
 """
 TileUnit model representing a group of linked tiles forming a selectable unit.
 
-For simple tiles (A5, B-E): unit contains a single 48×48 tile.
-For autotiles (A1-A4): unit contains multiple 48×48 tiles that form the unit.
+For simple tiles (A5, B-E): unit contains a single tile.
+For autotiles (A2-A4): unit contains multiple tiles that form the unit.
 """
 
 from dataclasses import dataclass, field
@@ -36,7 +36,7 @@ class TileUnit:
     
     @property
     def is_single_tile(self) -> bool:
-        """Check if this unit is a single 48×48 tile."""
+        """Check if this unit is a single tile."""
         return self.grid_width == 1 and self.grid_height == 1
     
     @property
