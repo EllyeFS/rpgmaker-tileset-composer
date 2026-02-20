@@ -18,9 +18,12 @@ from ..utils.constants import TILE_SIZE
 
 
 # Dimension-based auto-detection mapping: (width, height) -> tileset type name
+# Note: A1 and A2 share the same dimensions (768×576). Both are treated as A2 format
+# since they use compatible 2×3 unit layouts. A1's animated frames appear as static units.
 AUTO_DETECT_DIMENSIONS = {
-    (768, 576): "A2",  # A2: Ground autotiles (2×3 units)
+    (768, 576): "A2",  # A1/A2: Autotiles (2×3 units) - same dimensions
     (768, 384): "A3",  # A3: Building autotiles (2×2 units)
+    (768, 720): "A4",  # A4: Wall autotiles (alternating 2×3 and 2×2 units)
 }
 
 

@@ -76,6 +76,8 @@ UNIT_6x3 = UnitDefinition(6, 3)    # 288×144 (A1 animated)
 TILESET_TYPES = {
     # A1: Animated autotiles - 768×576
     # 4 rows, each: [6×3][2×3][6×3][2×3]
+    # Note: A1 shares dimensions with A2, so auto-detection treats both as A2 format.
+    # This definition exists for potential future explicit A1 handling.
     "A1": TilesetType(
         name="A1",
         width=768,

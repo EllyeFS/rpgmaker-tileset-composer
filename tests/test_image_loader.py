@@ -373,3 +373,105 @@ class TestA2AutoDetection:
         # Should have 192 tiles (16×12 grid of 48×48)
         assert len(tiles) == 192
         assert all(t.width == 48 and t.height == 48 for t in tiles)
+
+
+class TestA4AutoDetection:
+    """Tests for automatic A4 format detection based on image dimensions."""
+    
+    @pytest.fixture
+    def temp_dir(self, qapp):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            yield tmpdir
+    
+    def _create_test_image(self, path: str, width: int, height: int):
+        image = QImage(width, height, QImage.Format.Format_ARGB32)
+        image.fill(0xFFFF00FF)  # Magenta
+        image.save(path, "PNG")
+        return path
+    
+    def test_768x720_auto_detects_as_a4_units(self, temp_dir):
+        """An image with A4 dimensions should auto-detect as A4 format."""
+        path = self._create_test_image(
+            os.path.join(temp_dir, "auto_a4.png"), 768, 720
+        )
+        # Load without specifying tileset type - should auto-detect
+        units = ImageLoader.load_units_from_image(path)
+        
+        # A4 has 48 units (6 rows × 8 units per row)
+        assert len(units) == 48
+    
+    def test_a4_has_alternating_unit_sizes(self, temp_dir):
+        """A4 should have alternating 2×3 and 2×2 unit rows."""
+        path = self._create_test_image(
+            os.path.join(temp_dir, "a4_sizes.png"), 768, 720
+        )
+        units = ImageLoader.load_units_from_image(path)
+        
+        # Even rows (0, 2, 4): 2×3 units - indices 0-7, 16-23, 32-39
+        for i in range(8):
+            assert units[i].grid_width == 2 and units[i].grid_height == 3, f"Row 0, unit {i}"
+            assert units[i].pixel_height == 144
+        for i in range(16, 24):
+            assert units[i].grid_width == 2 and units[i].grid_height == 3, f"Row 2, unit {i}"
+        for i in range(32, 40):
+            assert units[i].grid_width == 2 and units[i].grid_height == 3, f"Row 4, unit {i}"
+        
+        # Odd rows (1, 3, 5): 2×2 units - indices 8-15, 24-31, 40-47
+        for i in range(8, 16):
+            assert units[i].grid_width == 2 and units[i].grid_height == 2, f"Row 1, unit {i}"
+            assert units[i].pixel_height == 96
+        for i in range(24, 32):
+            assert units[i].grid_width == 2 and units[i].grid_height == 2, f"Row 3, unit {i}"
+        for i in range(40, 48):
+            assert units[i].grid_width == 2 and units[i].grid_height == 2, f"Row 5, unit {i}"
+    
+    def test_a4_units_have_correct_tile_counts(self, temp_dir):
+        """A4 units should have correct tile counts based on size."""
+        path = self._create_test_image(
+            os.path.join(temp_dir, "a4_tiles.png"), 768, 720
+        )
+        units = ImageLoader.load_units_from_image(path)
+        
+        # 2×3 units have 6 tiles, 2×2 units have 4 tiles
+        for i, unit in enumerate(units):
+            row = i // 8
+            if row % 2 == 0:  # Even rows: 2×3
+                assert len(unit.tiles) == 6, f"Unit {i} (row {row}) should have 6 tiles"
+            else:  # Odd rows: 2×2
+                assert len(unit.tiles) == 4, f"Unit {i} (row {row}) should have 4 tiles"
+    
+    def test_a4_units_have_correct_positions(self, temp_dir):
+        """A4 units should have tiles at correct y positions."""
+        path = self._create_test_image(
+            os.path.join(temp_dir, "a4_positions.png"), 768, 720
+        )
+        units = ImageLoader.load_units_from_image(path)
+        
+        # Row 0: y=0 (2×3 units, 144px tall)
+        assert units[0].tiles[0].y == 0
+        
+        # Row 1: y=144 (2×2 units, 96px tall)
+        assert units[8].tiles[0].y == 144
+        
+        # Row 2: y=240 (144+96)
+        assert units[16].tiles[0].y == 240
+        
+        # Row 3: y=384 (144+96+144)
+        assert units[24].tiles[0].y == 384
+        
+        # Row 4: y=480 (144+96+144+96)
+        assert units[32].tiles[0].y == 480
+        
+        # Row 5: y=624 (144+96+144+96+144)
+        assert units[40].tiles[0].y == 624
+    
+    def test_a4_returns_tiles_for_legacy(self, temp_dir):
+        """load_tiles_from_image returns individual tiles for A4."""
+        path = self._create_test_image(
+            os.path.join(temp_dir, "a4_legacy.png"), 768, 720
+        )
+        tiles = ImageLoader.load_tiles_from_image(path)
+        
+        # Should have 240 tiles (16×15 grid of 48×48)
+        assert len(tiles) == 240
+        assert all(t.width == 48 and t.height == 48 for t in tiles)
