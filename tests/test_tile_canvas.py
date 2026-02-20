@@ -320,3 +320,167 @@ class TestTilePlacement:
         unit2 = self._create_mock_unit(1, 1)
         canvas.place_unit(unit2, 1, 0)
         assert canvas.placed_unit_count == 2
+
+
+class TestDropValidation:
+    """Tests for unit drop position validation."""
+    
+    def _create_mock_unit(self, grid_width: int = 1, grid_height: int = 1) -> TileUnit:
+        """Create a mock tile unit for testing."""
+        tiles = []
+        index = 0
+        for dy in range(grid_height):
+            for dx in range(grid_width):
+                img = QImage(TILE_SIZE, TILE_SIZE, QImage.Format.Format_ARGB32)
+                img.fill(Qt.GlobalColor.red)
+                tile = Tile(
+                    source_path="/test/mock.png",
+                    source_index=index,
+                    x=dx * TILE_SIZE,
+                    y=dy * TILE_SIZE,
+                    image=img,
+                )
+                tiles.append(tile)
+                index += 1
+        
+        unit = TileUnit(
+            grid_width=grid_width,
+            grid_height=grid_height,
+            tiles=tiles,
+            grid_x=0,
+            grid_y=0,
+        )
+        for tile in tiles:
+            tile.unit = unit
+        return unit
+
+    def test_a5_accepts_1x1_at_any_grid_position(self, qtbot):
+        """A5 tileset (1x1 units) accepts drops at any grid position."""
+        canvas = TileCanvasWidget()
+        qtbot.addWidget(canvas)
+        canvas.set_tileset_type(TILESET_TYPES["A5"])
+        
+        unit = self._create_mock_unit(1, 1)
+        
+        # A5 is 8x16 grid of 1x1 units
+        assert canvas._is_valid_drop_position(0, 0, unit) is True
+        assert canvas._is_valid_drop_position(7, 15, unit) is True
+        assert canvas._is_valid_drop_position(3, 8, unit) is True
+
+    def test_a5_rejects_2x2_unit(self, qtbot):
+        """A5 tileset rejects 2x2 units (wrong size)."""
+        canvas = TileCanvasWidget()
+        qtbot.addWidget(canvas)
+        canvas.set_tileset_type(TILESET_TYPES["A5"])
+        
+        unit = self._create_mock_unit(2, 2)
+        
+        # No valid position for 2x2 in A5
+        assert canvas._is_valid_drop_position(0, 0, unit) is False
+        assert canvas._snap_to_valid_position(0, 0, unit) is None
+
+    def test_a3_accepts_2x2_at_unit_boundaries(self, qtbot):
+        """A3 tileset accepts 2x2 units at correct boundaries."""
+        canvas = TileCanvasWidget()
+        qtbot.addWidget(canvas)
+        canvas.set_tileset_type(TILESET_TYPES["A3"])
+        
+        unit = self._create_mock_unit(2, 2)
+        
+        # A3: 768x384, 2x2 units -> unit positions at (0,0), (2,0), (4,0), etc.
+        assert canvas._is_valid_drop_position(0, 0, unit) is True
+        assert canvas._is_valid_drop_position(2, 0, unit) is True
+        assert canvas._is_valid_drop_position(0, 2, unit) is True
+
+    def test_a3_rejects_2x2_at_wrong_position(self, qtbot):
+        """A3 tileset rejects 2x2 units at non-boundary positions."""
+        canvas = TileCanvasWidget()
+        qtbot.addWidget(canvas)
+        canvas.set_tileset_type(TILESET_TYPES["A3"])
+        
+        unit = self._create_mock_unit(2, 2)
+        
+        # (1, 0) is not a valid unit boundary
+        assert canvas._is_valid_drop_position(1, 0, unit) is False
+        assert canvas._is_valid_drop_position(0, 1, unit) is False
+
+    def test_a3_rejects_1x1_unit(self, qtbot):
+        """A3 tileset rejects 1x1 units (wrong size)."""
+        canvas = TileCanvasWidget()
+        qtbot.addWidget(canvas)
+        canvas.set_tileset_type(TILESET_TYPES["A3"])
+        
+        unit = self._create_mock_unit(1, 1)
+        
+        assert canvas._is_valid_drop_position(0, 0, unit) is False
+        assert canvas._snap_to_valid_position(0, 0, unit) is None
+
+    def test_a2_accepts_2x3_at_unit_boundaries(self, qtbot):
+        """A2 tileset accepts 2x3 units at correct boundaries."""
+        canvas = TileCanvasWidget()
+        qtbot.addWidget(canvas)
+        canvas.set_tileset_type(TILESET_TYPES["A2"])
+        
+        unit = self._create_mock_unit(2, 3)
+        
+        # A2: 768x576, 2x3 units
+        assert canvas._is_valid_drop_position(0, 0, unit) is True
+        assert canvas._is_valid_drop_position(2, 0, unit) is True
+        assert canvas._is_valid_drop_position(0, 3, unit) is True
+
+    def test_a2_rejects_2x2_unit(self, qtbot):
+        """A2 tileset rejects 2x2 units (wrong size)."""
+        canvas = TileCanvasWidget()
+        qtbot.addWidget(canvas)
+        canvas.set_tileset_type(TILESET_TYPES["A2"])
+        
+        unit = self._create_mock_unit(2, 2)
+        
+        assert canvas._is_valid_drop_position(0, 0, unit) is False
+        assert canvas._snap_to_valid_position(0, 0, unit) is None
+
+    def test_snap_to_valid_finds_nearest(self, qtbot):
+        """_snap_to_valid_position finds the nearest valid position."""
+        canvas = TileCanvasWidget()
+        qtbot.addWidget(canvas)
+        canvas.set_tileset_type(TILESET_TYPES["A3"])
+        
+        unit = self._create_mock_unit(2, 2)
+        
+        # Hovering at (1, 0) should snap to (0, 0) or (2, 0)
+        pos = canvas._snap_to_valid_position(1, 0, unit)
+        assert pos in [(0, 0), (2, 0)]
+        
+        # Hovering at (3, 1) should snap to (2, 0) or (4, 0) or (2, 2) or (4, 2)
+        pos = canvas._snap_to_valid_position(3, 1, unit)
+        assert pos is not None
+        assert canvas._is_valid_drop_position(pos[0], pos[1], unit) is True
+
+    def test_b_type_accepts_1x1_only(self, qtbot):
+        """B/C/D/E tilesets accept only 1x1 units."""
+        canvas = TileCanvasWidget()
+        qtbot.addWidget(canvas)
+        canvas.set_tileset_type(TILESET_TYPES["B"])
+        
+        unit_1x1 = self._create_mock_unit(1, 1)
+        unit_2x2 = self._create_mock_unit(2, 2)
+        
+        assert canvas._is_valid_drop_position(0, 0, unit_1x1) is True
+        assert canvas._is_valid_drop_position(0, 0, unit_2x2) is False
+
+    def test_unit_positions_cache_updated(self, qtbot):
+        """Unit positions cache is updated when tileset type changes."""
+        canvas = TileCanvasWidget()
+        qtbot.addWidget(canvas)
+        
+        # A5 default
+        a5_positions = canvas._unit_positions.copy()
+        
+        # Change to A3
+        canvas.set_tileset_type(TILESET_TYPES["A3"])
+        a3_positions = canvas._unit_positions
+        
+        # Positions should differ (A5 has 1x1, A3 has 2x2)
+        assert a5_positions != a3_positions
+        assert len(a5_positions) > 0
+        assert len(a3_positions) > 0

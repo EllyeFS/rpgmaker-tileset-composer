@@ -241,7 +241,7 @@ class MainWindow(QMainWindow):
                     f"You selected {file_count} image files.\n\n"
                     f"Loading many tileset images at once may cause the application "
                     f"to freeze or crash due to high memory usage.\n\n"
-                    f"It's recommended to select 10 or fewer files at a time.\n\n"
+                    f"It's recommended to select 15 or fewer files at a time.\n\n"
                     f"Do you want to continue anyway?",
                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                     QMessageBox.StandardButton.No

@@ -55,11 +55,18 @@ class TileCanvasWidget(QWidget):
     # Drop hover highlight color
     DROP_HIGHLIGHT_COLOR = QColor(52, 152, 219, 100)  # Semi-transparent blue
     
+    # Invalid drop highlight color
+    INVALID_DROP_COLOR = QColor(231, 76, 60, 100)  # Semi-transparent red
+    
     def __init__(self, parent=None):
         super().__init__(parent)
         
         self._tileset_type: TilesetType = TILESET_TYPES["A5"]
         self._checker_pattern: QPixmap = self._create_checker_pattern()
+        
+        # Cached unit positions for current tileset type
+        self._unit_positions: list = []
+        self._update_unit_positions()
         
         # Placed units: maps (grid_x, grid_y) -> TileUnit
         # Only stores the top-left position of each placed unit
@@ -68,6 +75,7 @@ class TileCanvasWidget(QWidget):
         # Current drop hover position (for visual feedback)
         self._drop_hover_pos: Optional[Tuple[int, int]] = None
         self._drop_hover_unit: Optional[TileUnit] = None
+        self._drop_hover_valid: bool = False
         
         # Drag tracking for moving placed units
         self._drag_start_pos: Optional[QPoint] = None
@@ -99,8 +107,55 @@ class TileCanvasWidget(QWidget):
         """Set the tileset type and resize the canvas accordingly."""
         self._tileset_type = tileset_type
         self._placed_units.clear()  # Clear placed tiles when changing type
+        self._update_unit_positions()
         self._update_size()
         self.update()
+    
+    def _update_unit_positions(self):
+        """Update cached unit positions for current tileset type."""
+        self._unit_positions = get_unit_positions(self._tileset_type)
+    
+    def _is_valid_drop_position(self, grid_x: int, grid_y: int, unit: TileUnit) -> bool:
+        """
+        Check if a unit can be dropped at the given grid position.
+        
+        The unit must align with an expected unit position and match the expected size.
+        """
+        px = grid_x * TILE_SIZE
+        py = grid_y * TILE_SIZE
+        pw = unit.grid_width * TILE_SIZE
+        ph = unit.grid_height * TILE_SIZE
+        
+        # Check if this matches any expected unit position
+        for (ux, uy, uw, uh) in self._unit_positions:
+            if px == ux and py == uy and pw == uw and ph == uh:
+                return True
+        return False
+    
+    def _snap_to_valid_position(self, grid_x: int, grid_y: int, unit: TileUnit) -> Optional[Tuple[int, int]]:
+        """
+        Find the nearest valid drop position for the unit, if any.
+        
+        Returns (grid_x, grid_y) of a valid position, or None if no valid position.
+        """
+        pw = unit.grid_width * TILE_SIZE
+        ph = unit.grid_height * TILE_SIZE
+        
+        # Find unit positions that match the unit's size
+        matching_positions = [
+            (ux // TILE_SIZE, uy // TILE_SIZE)
+            for (ux, uy, uw, uh) in self._unit_positions
+            if uw == pw and uh == ph
+        ]
+        
+        if not matching_positions:
+            return None
+        
+        # Find the closest matching position
+        def distance(pos):
+            return abs(pos[0] - grid_x) + abs(pos[1] - grid_y)
+        
+        return min(matching_positions, key=distance)
     
     def _update_size(self):
         """Update the widget size based on the tileset type."""
@@ -132,8 +187,8 @@ class TileCanvasWidget(QWidget):
         for (grid_x, grid_y), unit in self._placed_units.items():
             self._draw_unit(painter, unit, grid_x, grid_y)
         
-        # Draw drop hover preview
-        if self._drop_hover_pos and self._drop_hover_unit:
+        # Draw drop hover preview (only if valid)
+        if self._drop_hover_pos and self._drop_hover_unit and self._drop_hover_valid:
             gx, gy = self._drop_hover_pos
             # Draw semi-transparent preview
             painter.setOpacity(0.6)
@@ -323,15 +378,20 @@ class TileCanvasWidget(QWidget):
             grid_x = pos.x() // TILE_SIZE
             grid_y = pos.y() // TILE_SIZE
             
-            # Clamp to canvas bounds considering unit size
             if self._drop_hover_unit:
-                max_x = self.grid_width - self._drop_hover_unit.grid_width
-                max_y = self.grid_height - self._drop_hover_unit.grid_height
-                grid_x = max(0, min(grid_x, max_x))
-                grid_y = max(0, min(grid_y, max_y))
+                # Try to snap to a valid position for this unit
+                valid_pos = self._snap_to_valid_position(grid_x, grid_y, self._drop_hover_unit)
+                if valid_pos:
+                    grid_x, grid_y = valid_pos
+                    self._drop_hover_valid = True
+                else:
+                    # No valid position for this unit size
+                    self._drop_hover_valid = False
+            else:
+                self._drop_hover_valid = False
             
             new_pos = (grid_x, grid_y)
-            if new_pos != self._drop_hover_pos:
+            if new_pos != self._drop_hover_pos or not self._drop_hover_valid:
                 self._drop_hover_pos = new_pos
                 self.update()
             
@@ -341,6 +401,7 @@ class TileCanvasWidget(QWidget):
         """Clear hover when drag leaves."""
         self._drop_hover_pos = None
         self._drop_hover_unit = None
+        self._drop_hover_valid = False
         self.update()
     
     def dropEvent(self, event):
@@ -357,11 +418,17 @@ class TileCanvasWidget(QWidget):
         grid_x = pos.x() // TILE_SIZE
         grid_y = pos.y() // TILE_SIZE
         
-        # Clamp to canvas bounds considering unit size
-        max_x = self.grid_width - unit.grid_width
-        max_y = self.grid_height - unit.grid_height
-        grid_x = max(0, min(grid_x, max_x))
-        grid_y = max(0, min(grid_y, max_y))
+        # Snap to valid position
+        valid_pos = self._snap_to_valid_position(grid_x, grid_y, unit)
+        if not valid_pos:
+            # Invalid drop - unit size doesn't match any position
+            self._drop_hover_pos = None
+            self._drop_hover_unit = None
+            self._drop_hover_valid = False
+            self.update()
+            return
+        
+        grid_x, grid_y = valid_pos
         
         # Place the unit
         self.place_unit(unit, grid_x, grid_y)
@@ -369,6 +436,7 @@ class TileCanvasWidget(QWidget):
         # Clear hover state
         self._drop_hover_pos = None
         self._drop_hover_unit = None
+        self._drop_hover_valid = False
         
         event.acceptProposedAction()
     
