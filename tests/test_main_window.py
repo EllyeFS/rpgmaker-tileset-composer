@@ -34,16 +34,16 @@ class TestFolderLoadingWarning:
     
     @pytest.fixture
     def large_folder(self, qapp):
-        """Create a folder with 15 images (above threshold)."""
+        """Create a folder with 16 images (above threshold of 15)."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            for i in range(15):
+            for i in range(16):
                 image = QImage(48, 48, QImage.Format.Format_ARGB32)
                 image.fill(0xFFFF0000)
                 image.save(os.path.join(tmpdir, f"tile_{i}.png"), "PNG")
             yield tmpdir
     
     def test_small_folder_loads_without_warning(self, main_window, small_folder):
-        """Folders with <= 10 files should load without showing a warning."""
+        """Folders with <= 15 files should load without showing a warning."""
         with patch.object(QMessageBox, 'warning') as mock_warning:
             main_window._load_tiles_from_folder(small_folder)
             
@@ -54,7 +54,7 @@ class TestFolderLoadingWarning:
             assert len(main_window.tile_palette._tiles) == 5
     
     def test_large_folder_shows_warning(self, main_window, large_folder):
-        """Folders with > 10 files should show a warning dialog."""
+        """Folders with > 15 files should show a warning dialog."""
         with patch.object(QMessageBox, 'warning', return_value=QMessageBox.StandardButton.Yes) as mock_warning:
             main_window._load_tiles_from_folder(large_folder)
             
@@ -64,7 +64,7 @@ class TestFolderLoadingWarning:
             # Check the warning message contains file count
             call_args = mock_warning.call_args
             message = call_args[0][2]  # Third positional arg is the message
-            assert "15" in message
+            assert "16" in message
             assert "freeze" in message.lower() or "crash" in message.lower()
     
     def test_large_folder_cancelled_does_not_load(self, main_window, large_folder):
@@ -81,12 +81,12 @@ class TestFolderLoadingWarning:
             main_window._load_tiles_from_folder(large_folder)
             
             # Tiles should be loaded
-            assert len(main_window.tile_palette._tiles) == 15
+            assert len(main_window.tile_palette._tiles) == 16
     
-    def test_exactly_10_files_no_warning(self, main_window, qapp):
-        """Exactly 10 files should not trigger the warning."""
+    def test_exactly_15_files_no_warning(self, main_window, qapp):
+        """Exactly 15 files should not trigger the warning (threshold is > 15)."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            for i in range(10):
+            for i in range(15):
                 image = QImage(48, 48, QImage.Format.Format_ARGB32)
                 image.fill(0xFF0000FF)
                 image.save(os.path.join(tmpdir, f"tile_{i}.png"), "PNG")
@@ -95,12 +95,12 @@ class TestFolderLoadingWarning:
                 main_window._load_tiles_from_folder(tmpdir)
                 
                 mock_warning.assert_not_called()
-                assert len(main_window.tile_palette._tiles) == 10
+                assert len(main_window.tile_palette._tiles) == 15
     
-    def test_exactly_11_files_shows_warning(self, main_window, qapp):
-        """11 files should trigger the warning."""
+    def test_exactly_16_files_shows_warning(self, main_window, qapp):
+        """16 files should trigger the warning (threshold is > 15)."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            for i in range(11):
+            for i in range(16):
                 image = QImage(48, 48, QImage.Format.Format_ARGB32)
                 image.fill(0xFF0000FF)
                 image.save(os.path.join(tmpdir, f"tile_{i}.png"), "PNG")
@@ -151,11 +151,11 @@ class TestLoadMultipleImages:
             # 3 images × 4 tiles each = 12 tiles
             assert len(main_window.tile_palette._tiles) == 12
     
-    def test_load_more_than_10_images_shows_warning(self, main_window, qapp):
-        """Loading more than 10 images should show warning."""
+    def test_load_more_than_15_images_shows_warning(self, main_window, qapp):
+        """Loading more than 15 images should show warning."""
         with tempfile.TemporaryDirectory() as tmpdir:
             paths = []
-            for i in range(15):
+            for i in range(16):
                 path = os.path.join(tmpdir, f"tile_{i}.png")
                 image = QImage(48, 48, QImage.Format.Format_ARGB32)
                 image.fill(0xFF00FF00)
@@ -166,13 +166,13 @@ class TestLoadMultipleImages:
                 main_window._load_tiles_from_images(paths)
                 
                 mock_warning.assert_called_once()
-                assert len(main_window.tile_palette._tiles) == 15
+                assert len(main_window.tile_palette._tiles) == 16
     
     def test_cancel_large_image_load(self, main_window, qapp):
         """Cancelling large image load should not load tiles."""
         with tempfile.TemporaryDirectory() as tmpdir:
             paths = []
-            for i in range(15):
+            for i in range(16):
                 path = os.path.join(tmpdir, f"tile_{i}.png")
                 image = QImage(48, 48, QImage.Format.Format_ARGB32)
                 image.fill(0xFF00FF00)

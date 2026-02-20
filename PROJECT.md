@@ -198,51 +198,6 @@ Alternating rows of different autotile types:
 | Image Processing | Pillow (PIL) |
 | Packaging | PyInstaller |
 
-## Implementation Phases
-
-### Phase 1: Foundation + Simple Grids
-**Target: A5, B, C, D, E support**
-
-- [ ] Project setup (PySide6, Pillow, structure)
-- [ ] Define tileset type constants
-- [ ] Image loading service (load PNG, slice into 48×48 tiles)
-- [ ] Basic main window layout
-- [ ] Palette widget (display tiles from source folder)
-- [ ] Canvas widget (empty grid matching target type)
-- [ ] Click-to-select, click-to-place interaction
-- [ ] Export to PNG
-
-### Phase 2: Autotile Support
-**Target: A2, A3, A4 support**
-
-- [ ] Extend tileset type definitions for autotile groupings
-- [ ] Slice images into autotile units (2×3, 2×2)
-- [ ] Display representative tile in palette, place full unit
-- [ ] Handle A4's mixed row structure
-
-### Phase 3: Animated Tiles
-**Target: A1 support**
-
-- [ ] Handle A1's complex block structure
-- [ ] Animation frame grouping (3-frame sequences)
-- [ ] Preview animation in palette (optional)
-
-### Phase 4: Polish
-- [ ] Drag-and-drop support
-- [ ] Undo/Redo
-- [ ] Save/Load project files
-- [ ] Zoom controls
-- [ ] Keyboard shortcuts
-- [ ] Source folder persistence
-- [ ] Auto-detect tileset type from image dimensions
-
-### Phase 5: Distribution
-- [ ] PyInstaller packaging
-- [ ] Windows executable
-- [ ] README and documentation
-
----
-
 ## Notes and Considerations
 
 ### Autotile Unit Sizes Reference
@@ -257,13 +212,6 @@ Alternating rows of different autotile types:
 | A4 (wall face) | 2×2 | 96×96 | 24 |
 | A5 | 1×1 | 48×48 | 128 |
 | B-E | 1×1 | 48×48 | 256 |
-
-### File Naming Convention
-
-RPG Maker expects files named like:
-- `Inside_A1.png`, `Inside_A2.png`, etc.
-- `World_A1.png`, `World_A2.png`, etc.
-- The prefix groups related tilesets together
 
 ### Transparency
 
