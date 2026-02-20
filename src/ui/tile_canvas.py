@@ -3,7 +3,7 @@
 from typing import Dict, Tuple, Optional, List
 
 from PySide6.QtWidgets import QWidget, QScrollArea, QVBoxLayout, QApplication
-from PySide6.QtCore import Qt, Signal, QPoint, QMimeData
+from PySide6.QtCore import Qt, Signal, QPoint, QMimeData, QRect
 from PySide6.QtGui import QPainter, QColor, QPen, QBrush, QPixmap, QDrag
 
 from ..models.tileset_types import TilesetType, TILESET_TYPES, get_unit_positions
@@ -69,6 +69,11 @@ class TileCanvasWidget(QWidget):
         
         # Canvas selection state for multiselect
         self._selected_positions: List[Tuple[int, int]] = []  # Top-left positions of selected units
+        
+        # Box selection state
+        self._box_selecting: bool = False
+        self._box_start: Optional[QPoint] = None
+        self._box_current: Optional[QPoint] = None
         
         # Current drop hover position (for visual feedback)
         self._drop_hover_pos: Optional[Tuple[int, int]] = None
@@ -262,6 +267,25 @@ class TileCanvasWidget(QWidget):
                     ph = unit.grid_height * TILE_SIZE
                     painter.fillRect(px, py, pw, ph, self.DROP_HIGHLIGHT_COLOR)
         
+        # Draw box selection overlay
+        if self._box_selecting and self._box_start and self._box_current:
+            # Calculate selection rectangle
+            x1 = min(self._box_start.x(), self._box_current.x())
+            y1 = min(self._box_start.y(), self._box_current.y())
+            x2 = max(self._box_start.x(), self._box_current.x())
+            y2 = max(self._box_start.y(), self._box_current.y())
+            sel_rect = QRect(x1, y1, x2 - x1, y2 - y1)
+            
+            # Draw semi-transparent fill
+            fill_color = QColor(135, 206, 250, 60)  # Light blue, semi-transparent
+            painter.fillRect(sel_rect, fill_color)
+            
+            # Draw border
+            border_color = QColor(135, 206, 250, 180)  # Light blue, more opaque
+            pen = QPen(border_color, 2)
+            painter.setPen(pen)
+            painter.drawRect(sel_rect)
+        
         # Draw grid lines
         pen = QPen(self._grid_color)
         pen.setWidth(1)
@@ -320,7 +344,7 @@ class TileCanvasWidget(QWidget):
     def mousePressEvent(self, event):
         """Handle mouse click to select a grid cell or start drag.
         
-        Supports multiselect with Ctrl key for placed units.
+        Supports multiselect with Ctrl key (toggle on click, box select on drag).
         """
         if event.button() == Qt.MouseButton.LeftButton:
             pos = event.position().toPoint()
@@ -331,19 +355,23 @@ class TileCanvasWidget(QWidget):
             if 0 <= grid_x < self.grid_width and 0 <= grid_y < self.grid_height:
                 # Check if there's a unit at this position
                 unit_info = self._find_unit_at_cell(grid_x, grid_y)
+                modifiers = event.modifiers()
                 
                 if unit_info:
                     unit_pos, unit = unit_info
-                    modifiers = event.modifiers()
                     
                     if modifiers & Qt.KeyboardModifier.ControlModifier:
-                        # Ctrl+Click: toggle selection
+                        # Ctrl+Click on unit: toggle selection + prepare for potential box select
                         if unit_pos in self._selected_positions:
                             self._selected_positions.remove(unit_pos)
                         else:
                             self._selected_positions.append(unit_pos)
                         self.update()
-                        self._drag_start_pos = None  # Don't start drag on Ctrl+Click
+                        
+                        # Prepare for potential box selection (but don't activate yet)
+                        self._box_start = pos
+                        self._box_current = pos
+                        self._drag_start_pos = None
                     else:
                         # Normal click: if clicking already-selected unit, keep selection
                         # Otherwise, select only this unit
@@ -353,17 +381,41 @@ class TileCanvasWidget(QWidget):
                         # Start tracking for potential drag
                         self._drag_start_pos = pos
                 else:
-                    # Clicked empty space - clear selection
-                    if self._selected_positions:
-                        self._selected_positions.clear()
-                        self.update()
-                    self._drag_start_pos = None
-                    self.cell_clicked.emit(grid_x, grid_y)
+                    # Clicked empty space
+                    if modifiers & Qt.KeyboardModifier.ControlModifier:
+                        # Ctrl+Click on empty space - prepare for box selection
+                        self._box_start = pos
+                        self._box_current = pos
+                        self._drag_start_pos = None
+                    else:
+                        # Clear selection
+                        if self._selected_positions:
+                            self._selected_positions.clear()
+                            self.update()
+                        self._drag_start_pos = None
+                        self.cell_clicked.emit(grid_x, grid_y)
     
     def mouseMoveEvent(self, event):
-        """Handle mouse move to start dragging placed units (supports multiselect)."""
+        """Handle mouse move to start dragging placed units or update box selection."""
         if not (event.buttons() & Qt.MouseButton.LeftButton):
             return
+        
+        # Check if we should activate box selection
+        if self._box_start and not self._box_selecting:
+            # We have a potential box selection - check if moved enough to activate it
+            distance = (event.position().toPoint() - self._box_start).manhattanLength()
+            if distance >= QApplication.startDragDistance():
+                # Activate box selection
+                self._box_selecting = True
+        
+        # Handle box selection
+        if self._box_selecting:
+            self._box_current = event.position().toPoint()
+            self._update_box_selection()
+            self.update()
+            return
+        
+        # Handle unit dragging
         if self._drag_start_pos is None:
             return
         
@@ -423,6 +475,49 @@ class TileCanvasWidget(QWidget):
         _set_drag_units([])
         self._dragging_from_canvas = False
         self._drag_start_pos = None
+    
+    def mouseReleaseEvent(self, event):
+        """Handle mouse release to finish box selection."""
+        if event.button() == Qt.MouseButton.LeftButton:
+            if self._box_selecting:
+                # Finish box selection
+                self._box_selecting = False
+                self._box_start = None
+                self._box_current = None
+                self.update()
+            elif self._box_start:
+                # We had potential box selection but never activated it (didn't move enough)
+                # The toggle selection already happened in mousePressEvent, so just clear state
+                self._box_start = None
+                self._box_current = None
+    
+    def _update_box_selection(self):
+        """Update selected units based on current box selection rectangle."""
+        if not self._box_start or not self._box_current:
+            return
+        
+        # Calculate selection rectangle
+        x1 = min(self._box_start.x(), self._box_current.x())
+        y1 = min(self._box_start.y(), self._box_current.y())
+        x2 = max(self._box_start.x(), self._box_current.x())
+        y2 = max(self._box_start.y(), self._box_current.y())
+        selection_rect = QRect(x1, y1, x2 - x1, y2 - y1)
+        
+        # Find all units that intersect with the selection rectangle
+        selected_positions = []
+        for (ux, uy), unit in self._placed_units.items():
+            # Calculate unit rectangle in pixels
+            unit_x = ux * TILE_SIZE
+            unit_y = uy * TILE_SIZE
+            unit_w = unit.grid_width * TILE_SIZE
+            unit_h = unit.grid_height * TILE_SIZE
+            unit_rect = QRect(unit_x, unit_y, unit_w, unit_h)
+            
+            # Check if selection rectangle intersects with unit rectangle
+            if selection_rect.intersects(unit_rect):
+                selected_positions.append((ux, uy))
+        
+        self._selected_positions = selected_positions
     
     def _find_unit_at_cell(self, grid_x: int, grid_y: int) -> Optional[Tuple[Tuple[int, int], TileUnit]]:
         """Find the unit (if any) that covers the given grid cell.
