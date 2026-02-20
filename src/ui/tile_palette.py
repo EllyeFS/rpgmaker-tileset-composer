@@ -320,6 +320,9 @@ class TilePalette(QWidget):
         Args:
             progress_callback: Optional callback(current, total) that returns True if cancelled
         """
+        # Disable visual updates during rebuild to prevent UI "shaking"
+        self.setUpdatesEnabled(False)
+        
         # Clear existing buttons
         for btn in self._tile_buttons:
             btn.deleteLater()
@@ -336,6 +339,7 @@ class TilePalette(QWidget):
             self._placeholder.setParent(self._tile_container)
             self._tile_layout.addWidget(self._placeholder, 0, 0)
             self._header_label.setText("Tile Palette")
+            self.setUpdatesEnabled(True)
             return
         
         # Hide placeholder
@@ -424,6 +428,9 @@ class TilePalette(QWidget):
         
         # Update header with tile count
         self._header_label.setText(f"Tile Palette ({total_tiles} tiles, {len(self._units)} units)")
+        
+        # Re-enable visual updates now that grid is fully built
+        self.setUpdatesEnabled(True)
     
     def _on_tile_clicked(self, tile: Tile):
         """Handle tile button click - selects the entire unit."""
