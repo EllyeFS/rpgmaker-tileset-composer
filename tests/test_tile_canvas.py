@@ -771,4 +771,276 @@ class TestCanvasMultiselect:
         
         # Selection should be cleared
         assert canvas._selected_positions == []
+    
+    def test_box_select_starting_on_empty_space(self, qtbot):
+        """Box selection can start from empty space."""
+        canvas = TileCanvasWidget()
+        qtbot.addWidget(canvas)
+        
+        # Place units with a gap
+        unit1 = self._create_mock_unit(1, 1)
+        unit2 = self._create_mock_unit(1, 1)
+        canvas.place_unit(unit1, 0, 0)
+        canvas.place_unit(unit2, 2, 0)
+        
+        from PySide6.QtCore import QPointF
+        from PySide6.QtGui import QMouseEvent
+        from PySide6.QtCore import QEvent
+        
+        # Press on empty space (between units) - make sure it covers both units
+        press_pos = QPointF(5, 10)
+        press_event = QMouseEvent(
+            QEvent.Type.MouseButtonPress,
+            press_pos,
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.ControlModifier
+        )
+        canvas.mousePressEvent(press_event)
+        
+        # Drag to cover both units
+        drag_pos = QPointF(TILE_SIZE * 3 - 5, TILE_SIZE - 10)
+        drag_event = QMouseEvent(
+            QEvent.Type.MouseMove,
+            drag_pos,
+            Qt.MouseButton.NoButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.ControlModifier
+        )
+        canvas.mouseMoveEvent(drag_event)
+        
+        # Release
+        release_event = QMouseEvent(
+            QEvent.Type.MouseButtonRelease,
+            drag_pos,
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.NoButton,
+            Qt.KeyboardModifier.ControlModifier
+        )
+        canvas.mouseReleaseEvent(release_event)
+        
+        # Should have selected both units
+        assert len(canvas._selected_positions) == 2
+        assert (0, 0) in canvas._selected_positions
+        assert (2, 0) in canvas._selected_positions
+    
+    def test_box_select_partial_coverage(self, qtbot):
+        """Box selection only selects units that intersect with rectangle."""
+        canvas = TileCanvasWidget()
+        qtbot.addWidget(canvas)
+        
+        # Place units in a row
+        unit1 = self._create_mock_unit(1, 1)
+        unit2 = self._create_mock_unit(1, 1)
+        unit3 = self._create_mock_unit(1, 1)
+        unit4 = self._create_mock_unit(1, 1)
+        canvas.place_unit(unit1, 0, 0)
+        canvas.place_unit(unit2, 1, 0)
+        canvas.place_unit(unit3, 2, 0)
+        canvas.place_unit(unit4, 3, 0)
+        
+        from PySide6.QtCore import QPointF
+        from PySide6.QtGui import QMouseEvent
+        from PySide6.QtCore import QEvent
+        
+        # Box select only covering unit2 and unit3
+        press_pos = QPointF(TILE_SIZE + 5, 5)
+        press_event = QMouseEvent(
+            QEvent.Type.MouseButtonPress,
+            press_pos,
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.ControlModifier
+        )
+        canvas.mousePressEvent(press_event)
+        
+        drag_pos = QPointF(TILE_SIZE * 3 - 5, TILE_SIZE - 5)
+        drag_event = QMouseEvent(
+            QEvent.Type.MouseMove,
+            drag_pos,
+            Qt.MouseButton.NoButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.ControlModifier
+        )
+        canvas.mouseMoveEvent(drag_event)
+        
+        release_event = QMouseEvent(
+            QEvent.Type.MouseButtonRelease,
+            drag_pos,
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.NoButton,
+            Qt.KeyboardModifier.ControlModifier
+        )
+        canvas.mouseReleaseEvent(release_event)
+        
+        # Should only select unit2 and unit3
+        assert len(canvas._selected_positions) == 2
+        assert (0, 0) not in canvas._selected_positions
+        assert (1, 0) in canvas._selected_positions
+        assert (2, 0) in canvas._selected_positions
+        assert (3, 0) not in canvas._selected_positions
+    
+    def test_box_select_with_multi_tile_units(self, qtbot):
+        """Box selection works correctly with multi-tile units."""
+        canvas = TileCanvasWidget()
+        qtbot.addWidget(canvas)
+        
+        # Place a 2x2 unit and some 1x1 units
+        unit_2x2 = self._create_mock_unit(2, 2)
+        unit_1x1_a = self._create_mock_unit(1, 1)
+        unit_1x1_b = self._create_mock_unit(1, 1)
+        canvas.place_unit(unit_2x2, 0, 0)  # Takes cells (0,0), (1,0), (0,1), (1,1)
+        canvas.place_unit(unit_1x1_a, 2, 0)
+        canvas.place_unit(unit_1x1_b, 3, 1)
+        
+        from PySide6.QtCore import QPointF
+        from PySide6.QtGui import QMouseEvent
+        from PySide6.QtCore import QEvent
+        
+        # Box select covering the 2x2 unit and unit_1x1_a
+        press_pos = QPointF(5, 5)
+        press_event = QMouseEvent(
+            QEvent.Type.MouseButtonPress,
+            press_pos,
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.ControlModifier
+        )
+        canvas.mousePressEvent(press_event)
+        
+        drag_pos = QPointF(TILE_SIZE * 3 - 5, TILE_SIZE - 5)
+        drag_event = QMouseEvent(
+            QEvent.Type.MouseMove,
+            drag_pos,
+            Qt.MouseButton.NoButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.ControlModifier
+        )
+        canvas.mouseMoveEvent(drag_event)
+        
+        release_event = QMouseEvent(
+            QEvent.Type.MouseButtonRelease,
+            drag_pos,
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.NoButton,
+            Qt.KeyboardModifier.ControlModifier
+        )
+        canvas.mouseReleaseEvent(release_event)
+        
+        # Should select the 2x2 unit (at 0,0) and unit_1x1_a (at 2,0)
+        # Should NOT select unit_1x1_b (at 3,1)
+        assert len(canvas._selected_positions) == 2
+        assert (0, 0) in canvas._selected_positions  # 2x2 unit
+        assert (2, 0) in canvas._selected_positions  # unit_1x1_a
+        assert (3, 1) not in canvas._selected_positions  # unit_1x1_b
+    
+    def test_box_select_clears_on_release(self, qtbot):
+        """Box selection state is cleared on mouse release."""
+        canvas = TileCanvasWidget()
+        qtbot.addWidget(canvas)
+        
+        unit1 = self._create_mock_unit(1, 1)
+        unit2 = self._create_mock_unit(1, 1)
+        canvas.place_unit(unit1, 0, 0)
+        canvas.place_unit(unit2, 1, 0)
+        
+        from PySide6.QtCore import QPointF
+        from PySide6.QtGui import QMouseEvent
+        from PySide6.QtCore import QEvent
+        
+        # Start box selection
+        press_pos = QPointF(5, 5)
+        press_event = QMouseEvent(
+            QEvent.Type.MouseButtonPress,
+            press_pos,
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.ControlModifier
+        )
+        canvas.mousePressEvent(press_event)
+        
+        # Move to activate box selection
+        drag_pos = QPointF(TILE_SIZE * 2 - 5, TILE_SIZE - 5)
+        drag_event = QMouseEvent(
+            QEvent.Type.MouseMove,
+            drag_pos,
+            Qt.MouseButton.NoButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.ControlModifier
+        )
+        canvas.mouseMoveEvent(drag_event)
+        
+        # Verify box selection is active
+        assert canvas._box_selecting
+        assert canvas._box_start is not None
+        assert canvas._box_current is not None
+        
+        # Release
+        release_event = QMouseEvent(
+            QEvent.Type.MouseButtonRelease,
+            drag_pos,
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.NoButton,
+            Qt.KeyboardModifier.ControlModifier
+        )
+        canvas.mouseReleaseEvent(release_event)
+        
+        # Box selection state should be cleared
+        assert not canvas._box_selecting
+        assert canvas._box_start is None
+        assert canvas._box_current is None
+    
+    def test_small_movement_remains_toggle(self, qtbot):
+        """Small movement below drag threshold doesn't activate box selection."""
+        canvas = TileCanvasWidget()
+        qtbot.addWidget(canvas)
+        
+        unit1 = self._create_mock_unit(1, 1)
+        unit2 = self._create_mock_unit(1, 1)
+        canvas.place_unit(unit1, 0, 0)
+        canvas.place_unit(unit2, 1, 0)
+        
+        from PySide6.QtCore import QPointF
+        from PySide6.QtGui import QMouseEvent
+        from PySide6.QtCore import QEvent
+        from PySide6.QtWidgets import QApplication
+        
+        # Ctrl+click on unit1 (should toggle it into selection)
+        press_pos = QPointF(10, 10)
+        press_event = QMouseEvent(
+            QEvent.Type.MouseButtonPress,
+            press_pos,
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.ControlModifier
+        )
+        canvas.mousePressEvent(press_event)
+        
+        # Move just 1 pixel (below startDragDistance threshold)
+        move_pos = QPointF(11, 11)
+        move_event = QMouseEvent(
+            QEvent.Type.MouseMove,
+            move_pos,
+            Qt.MouseButton.NoButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.ControlModifier
+        )
+        canvas.mouseMoveEvent(move_event)
+        
+        # Should NOT have activated box selection
+        assert not canvas._box_selecting
+        
+        # Release
+        release_event = QMouseEvent(
+            QEvent.Type.MouseButtonRelease,
+            move_pos,
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.NoButton,
+            Qt.KeyboardModifier.ControlModifier
+        )
+        canvas.mouseReleaseEvent(release_event)
+        
+        # Should have toggled unit1 into selection (click behavior, not box select)
+        assert len(canvas._selected_positions) == 1
+        assert (0, 0) in canvas._selected_positions
 
