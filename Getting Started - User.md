@@ -16,24 +16,25 @@
    .\venv\Scripts\Activate
    ```
    
-   > **Note:** If you get an execution policy error, run this first:
+   > **Note:** If you get an execution policy error, use one of these alternatives:
+   > 
+   > **Option A** - Bypass for this session only:
+   > ```powershell
+   > powershell -ExecutionPolicy Bypass -Command ".\venv\Scripts\Activate"
+   > ```
+   > 
+   > **Option B** - Change policy permanently for your user:
    > ```powershell
    > Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
    > ```
 
-3. **Install dependencies in editable mode:**
+3. **Install the application:**
    ```powershell
-   pip install -e ".[dev]"
+   pip install .
    ```
 
 ## Running the Application
 
 ```powershell
 tileset-composer
-```
-
-## Running Tests
-
-```powershell
-pytest
 ```
