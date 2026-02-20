@@ -260,8 +260,7 @@ class TileCanvasWidget(QWidget):
             return
         
         # Find min position in source for relative offsets
-        min_x = min(t.x for t in unit.tiles)
-        min_y = min(t.y for t in unit.tiles)
+        min_x, min_y, _, _ = unit.get_tile_bounds()
         
         # Draw each tile
         for tile in unit.tiles:

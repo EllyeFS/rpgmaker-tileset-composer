@@ -149,29 +149,18 @@ class TileButton(QFrame):
             painter.drawRect(0, 0, w - 1, h - 1)
         else:
             # Draw borders with different thickness based on edge type
-            # Top border
-            color_top = self._unit_border_color if self._edge_top else self._grid_border_color
-            pen_top = QPen(color_top, self.STRONG_BORDER_WIDTH if self._edge_top else self.LIGHT_BORDER_WIDTH)
-            painter.setPen(pen_top)
-            painter.drawLine(0, 0, w - 1, 0)
+            borders = [
+                (self._edge_top, 0, 0, w - 1, 0),        # Top: (x1, y1, x2, y2)
+                (self._edge_bottom, 0, h - 1, w - 1, h - 1),  # Bottom
+                (self._edge_left, 0, 0, 0, h - 1),        # Left
+                (self._edge_right, w - 1, 0, w - 1, h - 1),  # Right
+            ]
             
-            # Bottom border
-            color_bottom = self._unit_border_color if self._edge_bottom else self._grid_border_color
-            pen_bottom = QPen(color_bottom, self.STRONG_BORDER_WIDTH if self._edge_bottom else self.LIGHT_BORDER_WIDTH)
-            painter.setPen(pen_bottom)
-            painter.drawLine(0, h - 1, w - 1, h - 1)
-            
-            # Left border
-            color_left = self._unit_border_color if self._edge_left else self._grid_border_color
-            pen_left = QPen(color_left, self.STRONG_BORDER_WIDTH if self._edge_left else self.LIGHT_BORDER_WIDTH)
-            painter.setPen(pen_left)
-            painter.drawLine(0, 0, 0, h - 1)
-            
-            # Right border
-            color_right = self._unit_border_color if self._edge_right else self._grid_border_color
-            pen_right = QPen(color_right, self.STRONG_BORDER_WIDTH if self._edge_right else self.LIGHT_BORDER_WIDTH)
-            painter.setPen(pen_right)
-            painter.drawLine(w - 1, 0, w - 1, h - 1)
+            for is_edge, x1, y1, x2, y2 in borders:
+                color = self._unit_border_color if is_edge else self._grid_border_color
+                width = self.STRONG_BORDER_WIDTH if is_edge else self.LIGHT_BORDER_WIDTH
+                painter.setPen(QPen(color, width))
+                painter.drawLine(x1, y1, x2, y2)
     
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
@@ -397,13 +386,7 @@ class TilePalette(QWidget):
                     break
                 
                 # Calculate unit bounds for edge detection
-                if unit.tiles:
-                    unit_min_x = min(t.x for t in unit.tiles)
-                    unit_max_x = max(t.x for t in unit.tiles)
-                    unit_min_y = min(t.y for t in unit.tiles)
-                    unit_max_y = max(t.y for t in unit.tiles)
-                else:
-                    unit_min_x = unit_max_x = unit_min_y = unit_max_y = 0
+                unit_min_x, unit_min_y, unit_max_x, unit_max_y = unit.get_tile_bounds()
                 
                 for tile in unit.tiles:
                     display_col = tile.x // TILE_SIZE

@@ -61,6 +61,23 @@ class TileUnit:
         from ..utils.constants import TILE_SIZE
         return self.grid_height * TILE_SIZE
     
+    def get_tile_bounds(self) -> Tuple[int, int, int, int]:
+        """
+        Get the bounding box of all tiles in this unit.
+        
+        Returns:
+            Tuple of (min_x, min_y, max_x, max_y) in pixels.
+            Returns (0, 0, 0, 0) if unit has no tiles.
+        """
+        if not self.tiles:
+            return (0, 0, 0, 0)
+        
+        min_x = min(t.x for t in self.tiles)
+        min_y = min(t.y for t in self.tiles)
+        max_x = max(t.x for t in self.tiles)
+        max_y = max(t.y for t in self.tiles)
+        return (min_x, min_y, max_x, max_y)
+    
     def to_pixmap(self) -> "QPixmap":
         """
         Create a QPixmap showing the complete unit.
@@ -76,8 +93,7 @@ class TileUnit:
         
         if self.tiles:
             painter = QPainter(pixmap)
-            min_x = min(t.x for t in self.tiles)
-            min_y = min(t.y for t in self.tiles)
+            min_x, min_y, _, _ = self.get_tile_bounds()
             
             for tile in self.tiles:
                 rel_x = tile.x - min_x

@@ -222,23 +222,21 @@ class MainWindow(QMainWindow):
             file_count = len(image_paths)
             
             if file_count > MAX_RECOMMENDED_FILES:
+                # Build context-specific parts of the warning message
                 if warning_context == "folder":
-                    message = (
-                        f"This folder contains {file_count} image files.\n\n"
-                        f"Loading many tileset images at once may cause the application "
-                        f"to freeze or crash due to high memory usage.\n\n"
-                        f"It's recommended to organize your tiles into smaller folders "
-                        f"({MAX_RECOMMENDED_FILES} or fewer files each).\n\n"
-                        f"Do you want to continue anyway?"
-                    )
+                    source_desc = f"This folder contains {file_count} image files."
+                    advice = f"It's recommended to organize your tiles into smaller folders ({MAX_RECOMMENDED_FILES} or fewer files each)."
                 else:
-                    message = (
-                        f"You selected {file_count} image files.\n\n"
-                        f"Loading many tileset images at once may cause the application "
-                        f"to freeze or crash due to high memory usage.\n\n"
-                        f"It's recommended to select {MAX_RECOMMENDED_FILES} or fewer files at a time.\n\n"
-                        f"Do you want to continue anyway?"
-                    )
+                    source_desc = f"You selected {file_count} image files."
+                    advice = f"It's recommended to select {MAX_RECOMMENDED_FILES} or fewer files at a time."
+                
+                message = (
+                    f"{source_desc}\n\n"
+                    f"Loading many tileset images at once may cause the application "
+                    f"to freeze or crash due to high memory usage.\n\n"
+                    f"{advice}\n\n"
+                    f"Do you want to continue anyway?"
+                )
                 
                 reply = QMessageBox.warning(
                     self,
