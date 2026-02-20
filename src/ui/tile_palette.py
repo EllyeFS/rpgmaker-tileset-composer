@@ -132,18 +132,8 @@ class TileButton(QFrame):
         drag.setMimeData(mime_data)
         drag.setPixmap(drag_pixmap)
         
-        # Set hotspot to where the mouse is relative to the unit's top-left
-        # For multi-tile units, find which tile we're dragging from
-        tile_offset_x = 0
-        tile_offset_y = 0
-        for t in unit.tiles:
-            if t is self.tile:
-                tile_offset_x = (t.x - unit.tiles[0].x)
-                tile_offset_y = (t.y - unit.tiles[0].y)
-                break
-        hotspot_x = tile_offset_x + TILE_SIZE // 2
-        hotspot_y = tile_offset_y + TILE_SIZE // 2
-        drag.setHotSpot(QPoint(hotspot_x, hotspot_y))
+        # Hotspot at center of top-left tile (matches drop behavior)
+        drag.setHotSpot(QPoint(TILE_SIZE // 2, TILE_SIZE // 2))
         
         # Store unit in module-level variable (Qt drag doesn't preserve Python objects)
         set_current_drag_unit(unit)
