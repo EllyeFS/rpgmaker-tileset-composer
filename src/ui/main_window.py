@@ -26,6 +26,7 @@ from ..models.tile_unit import TileUnit
 from ..services.image_loader import ImageLoader
 from .tile_palette import TilePalette
 from .tile_canvas import TileCanvas
+from .new_project_dialog import NewProjectDialog
 
 
 class MainWindow(QMainWindow):
@@ -99,13 +100,18 @@ class MainWindow(QMainWindow):
         
         toolbar_layout.addSpacing(20)
         
-        # Target type selector
-        toolbar_layout.addWidget(QLabel("Target Type:"))
-        self.target_type_combo = QComboBox()
-        self.target_type_combo.addItems(TILESET_TYPES.keys())
-        self.target_type_combo.setCurrentText("A5")  # Default to simple grid
-        self.target_type_combo.currentTextChanged.connect(self._on_target_type_changed)
-        toolbar_layout.addWidget(self.target_type_combo)
+        # New project button
+        self.new_project_btn = QPushButton("New Project...")
+        self.new_project_btn.clicked.connect(self._new_project)
+        toolbar_layout.addWidget(self.new_project_btn)
+        
+        # Target type display (read-only)
+        toolbar_layout.addSpacing(10)
+        toolbar_layout.addWidget(QLabel("Target:"))
+        self.target_type_label = QLabel("A5")
+        self.target_type_label.setStyleSheet("font-weight: bold;")
+        self._current_type_name = "A5"  # Track current type
+        toolbar_layout.addWidget(self.target_type_label)
         
         toolbar_layout.addStretch()
         
@@ -126,7 +132,7 @@ class MainWindow(QMainWindow):
         
         # Right panel - Target canvas
         self.tile_canvas = TileCanvas()
-        self.tile_canvas.set_tileset_type_by_name(self.target_type_combo.currentText())
+        self.tile_canvas.set_tileset_type_by_name(self._current_type_name)
         self.tile_canvas.cell_clicked.connect(self._on_canvas_cell_clicked)
         self.tile_canvas.unit_placed.connect(self._on_unit_placed)
         splitter.addWidget(self.tile_canvas)
@@ -289,9 +295,11 @@ class MainWindow(QMainWindow):
             f"({tile.width}×{tile.height}px)"
         )
     
-    def _on_target_type_changed(self, type_name: str):
-        """Handle target tileset type change."""
+    def _set_target_type(self, type_name: str):
+        """Set the target tileset type (internal)."""
         tileset_type = TILESET_TYPES[type_name]
+        self._current_type_name = type_name
+        self.target_type_label.setText(type_name)
         self.tile_canvas.set_tileset_type(tileset_type)
         self.status_bar.showMessage(
             f"Target: {type_name} ({tileset_type.width}×{tileset_type.height} px)"
@@ -311,7 +319,27 @@ class MainWindow(QMainWindow):
         )
     
     def _new_project(self):
-        self.status_bar.showMessage("New project")
+        """Create a new tileset project."""
+        # Warn if canvas is not empty
+        if not self.tile_canvas.is_empty():
+            reply = QMessageBox.question(
+                self,
+                "New Project",
+                "Creating a new project will clear the current canvas.\n\nContinue?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+        
+        # Show new project dialog
+        selected_type = NewProjectDialog.get_tileset_type(
+            self, self._current_type_name
+        )
+        
+        if selected_type:
+            self._set_target_type(selected_type)
+            self.status_bar.showMessage(f"New {selected_type} project created")
     
     def _open_project(self):
         self.status_bar.showMessage("Open project...")
@@ -331,7 +359,7 @@ class MainWindow(QMainWindow):
             return
         
         # Suggest a filename based on target type
-        target_type = self.target_type_combo.currentText()
+        target_type = self._current_type_name
         suggested_name = f"Tileset_{target_type}.png"
         
         filepath, _ = QFileDialog.getSaveFileName(
