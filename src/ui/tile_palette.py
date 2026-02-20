@@ -15,13 +15,32 @@ from PySide6.QtWidgets import (
     QFrame,
     QGridLayout,
     QSizePolicy,
+    QApplication,
 )
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QPainter, QPen, QColor
+from PySide6.QtCore import Qt, Signal, QMimeData, QPoint
+from PySide6.QtGui import QPainter, QPen, QColor, QDrag, QPixmap
 
 from ..models.tile import Tile
 from ..models.tile_unit import TileUnit
 from ..utils.constants import TILE_SIZE
+
+
+# Custom MIME type for tile unit drag operations
+TILE_UNIT_MIME_TYPE = "application/x-rpgmaker-tileunit"
+
+# Module-level storage for currently dragged unit (Qt drag doesn't preserve Python objects)
+_current_drag_unit: Optional[TileUnit] = None
+
+
+def get_current_drag_unit() -> Optional[TileUnit]:
+    """Get the currently dragged tile unit."""
+    return _current_drag_unit
+
+
+def set_current_drag_unit(unit: Optional[TileUnit]):
+    """Set the currently dragged tile unit."""
+    global _current_drag_unit
+    _current_drag_unit = unit
 
 
 class TileButton(QFrame):
@@ -30,6 +49,7 @@ class TileButton(QFrame):
     
     Shows a single 48×48 tile and emits a signal when clicked.
     The signal includes the tile's parent unit for group selection.
+    Supports drag operations to move units to the canvas.
     """
     
     clicked = Signal(Tile)
@@ -38,6 +58,7 @@ class TileButton(QFrame):
         super().__init__(parent)
         self.tile = tile
         self._selected = False
+        self._drag_start_pos: Optional[QPoint] = None
         
         # All tiles are 48×48, plus border
         self.setFixedSize(TILE_SIZE + 2, TILE_SIZE + 2)
@@ -81,8 +102,82 @@ class TileButton(QFrame):
     
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_start_pos = event.position().toPoint()
             self.clicked.emit(self.tile)
         super().mousePressEvent(event)
+    
+    def mouseMoveEvent(self, event):
+        if not (event.buttons() & Qt.MouseButton.LeftButton):
+            return
+        if self._drag_start_pos is None:
+            return
+        
+        # Check if we've moved far enough to start a drag
+        distance = (event.position().toPoint() - self._drag_start_pos).manhattanLength()
+        if distance < QApplication.startDragDistance():
+            return
+        
+        # Get the unit to drag
+        unit = self.tile.unit
+        if unit is None:
+            return
+        
+        # Create drag pixmap showing the full unit
+        drag_pixmap = self._create_unit_pixmap(unit)
+        
+        # Create drag object
+        drag = QDrag(self)
+        mime_data = QMimeData()
+        mime_data.setData(TILE_UNIT_MIME_TYPE, b"")  # Marker data
+        drag.setMimeData(mime_data)
+        drag.setPixmap(drag_pixmap)
+        
+        # Set hotspot to where the mouse is relative to the unit's top-left
+        # For multi-tile units, find which tile we're dragging from
+        tile_offset_x = 0
+        tile_offset_y = 0
+        for t in unit.tiles:
+            if t is self.tile:
+                tile_offset_x = (t.x - unit.tiles[0].x)
+                tile_offset_y = (t.y - unit.tiles[0].y)
+                break
+        hotspot_x = tile_offset_x + TILE_SIZE // 2
+        hotspot_y = tile_offset_y + TILE_SIZE // 2
+        drag.setHotSpot(QPoint(hotspot_x, hotspot_y))
+        
+        # Store unit in module-level variable (Qt drag doesn't preserve Python objects)
+        set_current_drag_unit(unit)
+        
+        # Execute drag
+        drag.exec(Qt.DropAction.CopyAction)
+        
+        # Clear drag unit reference
+        set_current_drag_unit(None)
+        self._drag_start_pos = None
+    
+    def _create_unit_pixmap(self, unit: TileUnit) -> QPixmap:
+        """Create a pixmap showing the complete unit."""
+        width = unit.grid_width * TILE_SIZE
+        height = unit.grid_height * TILE_SIZE
+        
+        pixmap = QPixmap(width, height)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        
+        painter = QPainter(pixmap)
+        
+        # Find the top-left position in pixels
+        if unit.tiles:
+            min_x = min(t.x for t in unit.tiles)
+            min_y = min(t.y for t in unit.tiles)
+            
+            # Draw each tile at its relative position
+            for tile in unit.tiles:
+                rel_x = tile.x - min_x
+                rel_y = tile.y - min_y
+                painter.drawPixmap(rel_x, rel_y, tile.pixmap)
+        
+        painter.end()
+        return pixmap
 
 
 class TilePalette(QWidget):

@@ -22,6 +22,7 @@ from PySide6.QtCore import Qt
 
 from ..models import TILESET_TYPES
 from ..models.tile import Tile
+from ..models.tile_unit import TileUnit
 from ..services.image_loader import ImageLoader
 from .tile_palette import TilePalette
 from .tile_canvas import TileCanvas
@@ -127,6 +128,7 @@ class MainWindow(QMainWindow):
         self.tile_canvas = TileCanvas()
         self.tile_canvas.set_tileset_type_by_name(self.target_type_combo.currentText())
         self.tile_canvas.cell_clicked.connect(self._on_canvas_cell_clicked)
+        self.tile_canvas.unit_placed.connect(self._on_unit_placed)
         splitter.addWidget(self.tile_canvas)
         
         # Set initial splitter sizes (palette needs ~500px for 8 columns)
@@ -298,6 +300,15 @@ class MainWindow(QMainWindow):
     def _on_canvas_cell_clicked(self, grid_x: int, grid_y: int):
         """Handle click on a canvas grid cell."""
         self.status_bar.showMessage(f"Canvas cell clicked: ({grid_x}, {grid_y})")
+    
+    def _on_unit_placed(self, unit, grid_x: int, grid_y: int):
+        """Handle unit placement on the canvas."""
+        placed_count = len(self.tile_canvas.canvas._placed_units)
+        total_cells = self.tile_canvas.canvas.grid_width * self.tile_canvas.canvas.grid_height
+        self.status_bar.showMessage(
+            f"Placed {unit.source_name} at ({grid_x}, {grid_y}) - "
+            f"{placed_count} unit(s) on canvas"
+        )
     
     def _new_project(self):
         self.status_bar.showMessage("New project")

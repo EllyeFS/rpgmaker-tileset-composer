@@ -2,9 +2,12 @@
 
 import pytest
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QImage
 
 from src.ui.tile_canvas import TileCanvas, TileCanvasWidget
 from src.models.tileset_types import TILESET_TYPES
+from src.models.tile import Tile
+from src.models.tile_unit import TileUnit
 from src.utils.constants import TILE_SIZE
 
 
@@ -118,3 +121,143 @@ class TestTileCanvas:
         
         assert len(clicked_cells) == 1
         assert clicked_cells[0] == (3, 5)
+
+
+class TestTilePlacement:
+    """Tests for tile placement functionality."""
+    
+    def _create_mock_unit(self, grid_width: int = 1, grid_height: int = 1) -> TileUnit:
+        """Create a mock tile unit for testing."""
+        tiles = []
+        index = 0
+        for dy in range(grid_height):
+            for dx in range(grid_width):
+                # Create a simple colored image
+                img = QImage(TILE_SIZE, TILE_SIZE, QImage.Format.Format_ARGB32)
+                img.fill(Qt.GlobalColor.red)
+                tile = Tile(
+                    source_path="/test/mock.png",
+                    source_index=index,
+                    x=dx * TILE_SIZE,
+                    y=dy * TILE_SIZE,
+                    image=img,
+                )
+                tiles.append(tile)
+                index += 1
+        
+        unit = TileUnit(
+            grid_width=grid_width,
+            grid_height=grid_height,
+            tiles=tiles,
+            grid_x=0,
+            grid_y=0,
+        )
+        # Link tiles to unit
+        for tile in tiles:
+            tile.unit = unit
+        
+        return unit
+    
+    def test_place_single_tile_unit(self, qtbot):
+        """Can place a 1x1 unit on the canvas."""
+        canvas = TileCanvasWidget()
+        qtbot.addWidget(canvas)
+        
+        unit = self._create_mock_unit(1, 1)
+        canvas.place_unit(unit, 0, 0)
+        
+        assert len(canvas._placed_units) == 1
+        assert (0, 0) in canvas._placed_units
+        assert canvas._placed_units[(0, 0)] is unit
+    
+    def test_place_multi_tile_unit(self, qtbot):
+        """Can place a 2x2 unit on the canvas."""
+        canvas = TileCanvasWidget()
+        qtbot.addWidget(canvas)
+        
+        unit = self._create_mock_unit(2, 2)
+        canvas.place_unit(unit, 3, 4)
+        
+        assert len(canvas._placed_units) == 1
+        assert (3, 4) in canvas._placed_units
+    
+    def test_place_unit_emits_signal(self, qtbot):
+        """Placing a unit emits unit_placed signal."""
+        canvas = TileCanvasWidget()
+        qtbot.addWidget(canvas)
+        
+        placed = []
+        canvas.unit_placed.connect(lambda u, x, y: placed.append((u, x, y)))
+        
+        unit = self._create_mock_unit(1, 1)
+        canvas.place_unit(unit, 2, 3)
+        
+        assert len(placed) == 1
+        assert placed[0][0] is unit
+        assert placed[0][1] == 2
+        assert placed[0][2] == 3
+    
+    def test_place_unit_overwrites_existing(self, qtbot):
+        """Placing a unit overwrites any existing unit at that position."""
+        canvas = TileCanvasWidget()
+        qtbot.addWidget(canvas)
+        
+        unit1 = self._create_mock_unit(1, 1)
+        unit2 = self._create_mock_unit(1, 1)
+        
+        canvas.place_unit(unit1, 0, 0)
+        canvas.place_unit(unit2, 0, 0)
+        
+        assert len(canvas._placed_units) == 1
+        assert canvas._placed_units[(0, 0)] is unit2
+    
+    def test_place_large_unit_removes_overlapped(self, qtbot):
+        """Placing a large unit removes smaller units it overlaps."""
+        canvas = TileCanvasWidget()
+        qtbot.addWidget(canvas)
+        
+        # Place small units
+        small1 = self._create_mock_unit(1, 1)
+        small2 = self._create_mock_unit(1, 1)
+        canvas.place_unit(small1, 0, 0)
+        canvas.place_unit(small2, 1, 1)
+        
+        assert len(canvas._placed_units) == 2
+        
+        # Place large 2x2 unit that covers both
+        large = self._create_mock_unit(2, 2)
+        canvas.place_unit(large, 0, 0)
+        
+        # Small units should be removed
+        assert len(canvas._placed_units) == 1
+        assert canvas._placed_units[(0, 0)] is large
+    
+    def test_clear_removes_all_units(self, qtbot):
+        """Clear removes all placed units."""
+        canvas = TileCanvasWidget()
+        qtbot.addWidget(canvas)
+        
+        unit1 = self._create_mock_unit(1, 1)
+        unit2 = self._create_mock_unit(1, 1)
+        canvas.place_unit(unit1, 0, 0)
+        canvas.place_unit(unit2, 3, 3)
+        
+        assert len(canvas._placed_units) == 2
+        
+        canvas.clear()
+        
+        assert len(canvas._placed_units) == 0
+    
+    def test_changing_tileset_type_clears_canvas(self, qtbot):
+        """Changing tileset type clears all placed units."""
+        canvas = TileCanvasWidget()
+        qtbot.addWidget(canvas)
+        
+        unit = self._create_mock_unit(1, 1)
+        canvas.place_unit(unit, 0, 0)
+        
+        assert len(canvas._placed_units) == 1
+        
+        canvas.set_tileset_type(TILESET_TYPES["B"])
+        
+        assert len(canvas._placed_units) == 0
