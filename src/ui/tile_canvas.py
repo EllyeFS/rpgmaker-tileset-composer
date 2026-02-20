@@ -6,7 +6,7 @@ from PySide6.QtWidgets import QWidget, QScrollArea, QVBoxLayout, QApplication
 from PySide6.QtCore import Qt, Signal, QPoint, QMimeData
 from PySide6.QtGui import QPainter, QColor, QPen, QBrush, QPixmap, QDrag
 
-from ..models.tileset_types import TilesetType, TILESET_TYPES
+from ..models.tileset_types import TilesetType, TILESET_TYPES, get_unit_positions
 from ..models.tile_unit import TileUnit
 from ..utils.constants import TILE_SIZE
 
@@ -48,6 +48,9 @@ class TileCanvasWidget(QWidget):
     
     # Grid line color
     GRID_COLOR = QColor(100, 100, 100, 128)
+    
+    # Unit boundary grid line color (stronger)
+    UNIT_GRID_COLOR = QColor(60, 60, 60, 200)
     
     # Drop hover highlight color
     DROP_HIGHLIGHT_COLOR = QColor(52, 152, 219, 100)  # Semi-transparent blue
@@ -156,6 +159,31 @@ class TileCanvasWidget(QWidget):
         # Horizontal lines
         for y in range(0, rect.height() + 1, TILE_SIZE):
             painter.drawLine(0, y, rect.width(), y)
+        
+        # Draw stronger unit boundary lines
+        unit_positions = get_unit_positions(self._tileset_type)
+        unit_pen = QPen(self.UNIT_GRID_COLOR)
+        unit_pen.setWidth(2)
+        painter.setPen(unit_pen)
+        
+        # Collect unique x and y boundaries from unit positions
+        x_boundaries = set([0, rect.width()])
+        y_boundaries = set([0, rect.height()])
+        for (ux, uy, uw, uh) in unit_positions:
+            x_boundaries.add(ux)
+            x_boundaries.add(ux + uw)
+            y_boundaries.add(uy)
+            y_boundaries.add(uy + uh)
+        
+        # Draw vertical unit boundary lines
+        for x in sorted(x_boundaries):
+            if 0 <= x <= rect.width():
+                painter.drawLine(x, 0, x, rect.height())
+        
+        # Draw horizontal unit boundary lines
+        for y in sorted(y_boundaries):
+            if 0 <= y <= rect.height():
+                painter.drawLine(0, y, rect.width(), y)
         
         painter.end()
     
