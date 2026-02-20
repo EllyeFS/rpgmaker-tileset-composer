@@ -14,15 +14,15 @@ from PySide6.QtWidgets import (
     QLabel,
     QFrame,
     QGridLayout,
-    QSizePolicy,
     QApplication,
 )
 from PySide6.QtCore import Qt, Signal, QMimeData, QPoint, QRect, QEvent
-from PySide6.QtGui import QPainter, QPen, QColor, QDrag, QPixmap, QBrush
+from PySide6.QtGui import QPainter, QPen, QColor, QDrag, QPixmap
 
 from ..models.tile import Tile
 from ..models.tile_unit import TileUnit, create_composite_drag_pixmap
 from ..utils.constants import TILE_SIZE, PROGRESS_REPORT_INTERVAL, TILE_UNIT_MIME_TYPE
+from .box_selection_mixin import BoxSelectionMixin
 
 
 # Module-level storage for currently dragged units (Qt drag doesn't preserve Python objects)
@@ -165,7 +165,6 @@ class TileButton(QFrame):
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
             self._drag_start_pos = event.position().toPoint()
-            # Emit clicked signal (but note: won't start drag if Ctrl held - see mouseMoveEvent)
             self.clicked.emit(self.tile, event.modifiers())
         super().mousePressEvent(event)
     
@@ -175,56 +174,48 @@ class TileButton(QFrame):
         if self._drag_start_pos is None:
             return
         
-        # Don't start drag if modifier keys are held (used for multiselect)
         if event.modifiers() & (Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier):
             return
         
-        # Check if we've moved far enough to start a drag
         distance = (event.position().toPoint() - self._drag_start_pos).manhattanLength()
         if distance < QApplication.startDragDistance():
             return
         
-        # Get the unit to drag
         unit = self.tile.unit
         if unit is None:
             return
         
-        # Get palette to access selected units
-        palette = self.parent()
-        while palette and not isinstance(palette, TilePalette):
-            palette = palette.parent()
+        palette = self._find_palette()
+        draggable_units = palette.get_draggable_units(unit) if palette else [unit]
         
-        if palette:
-            # Get draggable units (filtered to same source)
-            draggable_units = palette.get_draggable_units(unit)
-        else:
-            # Fallback if palette not found
-            draggable_units = [unit]
+        self._start_drag(draggable_units, unit)
+    
+    def _find_palette(self) -> Optional['TilePalette']:
+        """Find the parent TilePalette widget."""
+        widget = self.parent()
+        while widget and not isinstance(widget, TilePalette):
+            widget = widget.parent()
+        return widget
+    
+    def _start_drag(self, units: List[TileUnit], primary_unit: TileUnit):
+        """Start dragging the given units."""
+        drag_pixmap, hotspot = create_composite_drag_pixmap(units, primary_unit)
         
-        # Create composite drag pixmap using utility function
-        drag_pixmap, hotspot = create_composite_drag_pixmap(draggable_units, unit)
-        
-        # Create drag object
         drag = QDrag(self)
         mime_data = QMimeData()
-        mime_data.setData(TILE_UNIT_MIME_TYPE, b"")  # Marker data
+        mime_data.setData(TILE_UNIT_MIME_TYPE, b"")
         drag.setMimeData(mime_data)
         drag.setPixmap(drag_pixmap)
         drag.setHotSpot(hotspot)
         
-        # Store units in module-level variable (Qt drag doesn't preserve Python objects)
-        set_current_drag_units(draggable_units)
-        
-        # Execute drag
+        set_current_drag_units(units)
         drag.exec(Qt.DropAction.CopyAction)
-        
-        # Clear drag units reference
         set_current_drag_units([])
         self._drag_start_pos = None
 
 
 
-class TilePalette(QWidget):
+class TilePalette(QWidget, BoxSelectionMixin):
     """
     A scrollable palette displaying tiles from source images.
     
@@ -232,7 +223,6 @@ class TilePalette(QWidget):
     Clicking a tile selects its entire unit (for multi-tile autotiles).
     """
     
-    # Emits the selected unit when a tile is clicked
     unit_selected = Signal(TileUnit)
     
     def __init__(self, parent: Optional[QWidget] = None):
@@ -240,17 +230,13 @@ class TilePalette(QWidget):
         
         self._units: List[TileUnit] = []
         self._tile_buttons: List[TileButton] = []
-        self._selected_units: List[TileUnit] = []  # Multiple selection support
-        self._last_clicked_unit: Optional[TileUnit] = None  # For future shift-select
+        self._selected_units: List[TileUnit] = []
+        self._last_clicked_unit: Optional[TileUnit] = None
         
-        # Grid colors for tile buttons
         self._unit_border_color: QColor = QColor(TileButton.DEFAULT_UNIT_BORDER)
         self._grid_border_color: QColor = QColor(TileButton.DEFAULT_GRID_BORDER)
         
-        # Box selection state
-        self._box_selecting: bool = False
-        self._box_start: Optional[QPoint] = None
-        self._box_current: Optional[QPoint] = None
+        self.initialize_box_selection()
         
         self._setup_ui()
     
@@ -258,28 +244,24 @@ class TilePalette(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         
-        # Header
         self._header_label = QLabel("Tile Palette")
         self._header_label.setStyleSheet("font-weight: bold; padding: 5px;")
         layout.addWidget(self._header_label)
         
-        # Scroll area for tiles
         self._scroll_area = QScrollArea()
         self._scroll_area.setWidgetResizable(True)
         self._scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         layout.addWidget(self._scroll_area)
         
-        # Container for tile grid
         self._tile_container = QWidget()
         self._tile_container.setMouseTracking(True)
-        self._tile_container.installEventFilter(self)  # Capture mouse events for box select
+        self._tile_container.installEventFilter(self)
         self._tile_layout = QGridLayout(self._tile_container)
         self._tile_layout.setSpacing(0)
         self._tile_layout.setContentsMargins(0, 0, 0, 0)
         self._tile_layout.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
         self._scroll_area.setWidget(self._tile_container)
         
-        # Placeholder when no tiles loaded
         self._placeholder = QLabel("Open images or folders to display tile palette")
         self._placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._placeholder.setStyleSheet("color: #888; padding: 20px;")
@@ -301,10 +283,7 @@ class TilePalette(QWidget):
         
         Units from source images already in the palette are not added again.
         """
-        # Get set of source paths already in palette
         existing_sources = {u.source_path for u in self._units}
-        
-        # Filter out units from sources that are already loaded
         new_units = [u for u in units if u.source_path not in existing_sources]
         
         if new_units:
@@ -344,36 +323,29 @@ class TilePalette(QWidget):
         Args:
             progress_callback: Optional callback(current, total) that returns True if cancelled
         """
-        # Disable visual updates during rebuild to prevent UI "shaking"
         self.setUpdatesEnabled(False)
         
-        # Clear existing buttons
         for btn in self._tile_buttons:
             btn.deleteLater()
         self._tile_buttons.clear()
         
-        # Clear layout
         while self._tile_layout.count():
             item = self._tile_layout.takeAt(0)
             if item.widget() and item.widget() != self._placeholder:
                 item.widget().deleteLater()
         
         if not self._units:
-            # Show placeholder
             self._placeholder.setParent(self._tile_container)
             self._tile_layout.addWidget(self._placeholder, 0, 0)
             self._header_label.setText("Tile Palette")
             self.setUpdatesEnabled(True)
             return
         
-        # Hide placeholder
         self._placeholder.setParent(None)
         
-        # Count total tiles for progress
         total_tiles = sum(len(unit.tiles) for unit in self._units)
         tiles_processed = 0
         
-        # Group units by source file
         units_by_source: Dict[str, List[TileUnit]] = {}
         for unit in self._units:
             source = unit.source_name
@@ -387,16 +359,14 @@ class TilePalette(QWidget):
             if cancelled:
                 break
                 
-            # Add source file label
             source_label = QLabel(source_name)
             source_label.setStyleSheet(
                 "font-weight: bold; color: #666; padding: 5px 0; "
                 "border-bottom: 1px solid #ccc;"
             )
-            self._tile_layout.addWidget(source_label, layout_row, 0, 1, 16)  # Span up to 16 columns
+            self._tile_layout.addWidget(source_label, layout_row, 0, 1, 16)
             layout_row += 1
             
-            # Calculate grid bounds for this source
             max_col = 0
             max_row = 0
             for unit in source_units:
@@ -408,19 +378,16 @@ class TilePalette(QWidget):
                     if tile_row >= max_row:
                         max_row = tile_row + 1
             
-            # Display tiles at their original positions (x, y based)
             for unit in source_units:
                 if cancelled:
                     break
                 
-                # Calculate unit bounds for edge detection
                 unit_min_x, unit_min_y, unit_max_x, unit_max_y = unit.get_tile_bounds()
                 
                 for tile in unit.tiles:
                     display_col = tile.x // TILE_SIZE
                     display_row = tile.y // TILE_SIZE
                     
-                    # Determine which edges are unit boundaries
                     edge_top = tile.y == unit_min_y
                     edge_bottom = tile.y == unit_max_y
                     edge_left = tile.x == unit_min_x
@@ -429,13 +396,12 @@ class TilePalette(QWidget):
                     btn = TileButton(tile, edge_top, edge_bottom, edge_left, edge_right,
                                      self._unit_border_color, self._grid_border_color)
                     btn.clicked.connect(self._on_tile_clicked)
-                    btn.installEventFilter(self)  # Install filter for box selection
+                    btn.installEventFilter(self)
                     self._tile_buttons.append(btn)
                     self._tile_layout.addWidget(btn, layout_row + display_row, display_col)
                     
                     tiles_processed += 1
                     
-                    # Report progress and process events periodically
                     if progress_callback and tiles_processed % PROGRESS_REPORT_INTERVAL == 0:
                         if progress_callback(tiles_processed, total_tiles):
                             cancelled = True
@@ -444,17 +410,13 @@ class TilePalette(QWidget):
             
             layout_row += max_row
         
-        # Final progress update
         if progress_callback and not cancelled:
             progress_callback(total_tiles, total_tiles)
         
-        # Add stretch at bottom
         self._tile_layout.setRowStretch(layout_row, 1)
         
-        # Update header with tile count
         self._header_label.setText(f"Tile Palette ({total_tiles} tiles, {len(self._units)} units)")
         
-        # Re-enable visual updates now that grid is fully built
         self.setUpdatesEnabled(True)
     
     def _on_tile_clicked(self, tile: Tile, modifiers):
@@ -468,35 +430,29 @@ class TilePalette(QWidget):
             return
         
         if modifiers & Qt.KeyboardModifier.ControlModifier:
-            # Ctrl+Click: toggle selection (restricted to same source)
-            if self._selected_units:
-                # Check if trying to select from different source
-                first_source = self._selected_units[0].source_path
-                if unit.source_path != first_source:
-                    # Different source - ignore ctrl, replace selection
-                    self._selected_units = [unit]
-                elif unit in self._selected_units:
-                    # Same source - toggle off
-                    self._selected_units.remove(unit)
-                else:
-                    # Same source - add to selection
-                    self._selected_units.append(unit)
-            else:
-                # First selection
-                self._selected_units = [unit]
+            self._handle_ctrl_click_selection(unit)
         else:
-            # Normal click: if clicking an already-selected unit, keep selection (for dragging)
-            # Otherwise, replace selection with just this unit
             if unit not in self._selected_units:
                 self._selected_units = [unit]
-            # else: keep current selection intact
         
         self._last_clicked_unit = unit
         self._update_selection_visuals()
         
-        # Emit signal with first selected unit for compatibility
         if self._selected_units:
             self.unit_selected.emit(self._selected_units[0])
+    
+    def _handle_ctrl_click_selection(self, unit: TileUnit):
+        """Handle Ctrl+Click selection logic (toggle with source restriction)."""
+        if self._selected_units:
+            first_source = self._selected_units[0].source_path
+            if unit.source_path != first_source:
+                self._selected_units = [unit]
+            elif unit in self._selected_units:
+                self._selected_units.remove(unit)
+            else:
+                self._selected_units.append(unit)
+        else:
+            self._selected_units = [unit]
     
     def _update_selection_visuals(self):
         """Update visual selection state for all tile buttons."""
@@ -512,16 +468,10 @@ class TilePalette(QWidget):
         Returns:
             List of units from the same source, or just the clicked unit if none selected
         """
-        # If clicked unit is not in selection, drag it alone
         if clicked_unit not in self._selected_units:
             return [clicked_unit]
         
-        # Filter selected units to only same source
-        draggable = []
-        for unit in self._selected_units:
-            if unit.source_path == clicked_unit.source_path:
-                draggable.append(unit)
-        
+        draggable = [u for u in self._selected_units if u.source_path == clicked_unit.source_path]
         return draggable if draggable else [clicked_unit]
     
     @property
@@ -536,113 +486,90 @@ class TilePalette(QWidget):
     
     def eventFilter(self, obj: QWidget, event: QEvent) -> bool:
         """Handle mouse events on tile container and buttons for box selection."""
-        # Only handle events from tile container or tile buttons
         if obj is not self._tile_container and not isinstance(obj, TileButton):
             return super().eventFilter(obj, event)
         
         if event.type() == QEvent.Type.MouseButtonPress:
-            if event.button() == Qt.MouseButton.LeftButton:
-                if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
-                    # Start box selection
-                    self._box_selecting = True
-                    # Get position relative to tile container
-                    if isinstance(obj, TileButton):
-                        # Convert from button coordinates to container coordinates
-                        self._box_start = obj.mapTo(self._tile_container, event.pos())
-                    else:
-                        self._box_start = event.pos()
-                    self._box_current = self._box_start
-                    self._tile_container.update()
-                    # Don't consume event from buttons yet - let toggle selection happen
-                    return False
-        
+            return self._handle_box_press(obj, event)
         elif event.type() == QEvent.Type.MouseMove:
-            if self._box_selecting:
-                # Update box selection
-                if isinstance(obj, TileButton):
-                    # Convert from button coordinates to container coordinates
-                    self._box_current = obj.mapTo(self._tile_container, event.pos())
-                else:
-                    self._box_current = event.pos()
-                self._update_box_selection()
-                self._tile_container.update()
-                # Once we start dragging, consume the event to prevent tile drag
-                return True
-        
+            return self._handle_box_move(obj, event)
         elif event.type() == QEvent.Type.MouseButtonRelease:
-            if event.button() == Qt.MouseButton.LeftButton and self._box_selecting:
-                # Finish box selection
-                self._box_selecting = False
-                self._box_start = None
-                self._box_current = None
-                self._tile_container.update()
-                return True
-        
+            return self._handle_box_release(event)
         elif event.type() == QEvent.Type.Paint:
-            # Draw selection box overlay
-            if self._box_selecting and self._box_start and self._box_current:
-                painter = QPainter(self._tile_container)
-                
-                # Calculate selection rectangle
-                x1 = min(self._box_start.x(), self._box_current.x())
-                y1 = min(self._box_start.y(), self._box_current.y())
-                x2 = max(self._box_start.x(), self._box_current.x())
-                y2 = max(self._box_start.y(), self._box_current.y())
-                rect = QRect(x1, y1, x2 - x1, y2 - y1)
-                
-                # Draw semi-transparent fill
-                fill_color = QColor(135, 206, 250, 60)  # Light blue, semi-transparent
-                painter.fillRect(rect, fill_color)
-                
-                # Draw border
-                border_color = QColor(135, 206, 250, 180)  # Light blue, more opaque
-                pen = QPen(border_color, 2)
-                painter.setPen(pen)
-                painter.drawRect(rect)
-                
-                painter.end()
+            self._handle_box_paint()
         
         return super().eventFilter(obj, event)
     
-    def _update_box_selection(self):
-        """Update selected units based on current box selection rectangle."""
-        if not self._box_start or not self._box_current:
+    def _handle_box_press(self, obj: QWidget, event) -> bool:
+        """Handle mouse press for box selection."""
+        if event.button() == Qt.MouseButton.LeftButton:
+            if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+                pos = obj.mapTo(self._tile_container, event.pos()) if isinstance(obj, TileButton) else event.pos()
+                self.start_box_selection(pos)
+                self._tile_container.update()
+                return False
+        return False
+    
+    def _handle_box_move(self, obj: QWidget, event) -> bool:
+        """Handle mouse move for box selection."""
+        if self.is_box_selecting():
+            pos = obj.mapTo(self._tile_container, event.pos()) if isinstance(obj, TileButton) else event.pos()
+            self.update_box_selection(pos)
+            self._tile_container.update()
+            return True
+        return False
+    
+    def _handle_box_release(self, event) -> bool:
+        """Handle mouse release for box selection."""
+        if event.button() == Qt.MouseButton.LeftButton and self.is_box_selecting():
+            self.end_box_selection()
+            self._tile_container.update()
+            return True
+        return False
+    
+    def _handle_box_paint(self):
+        """Handle paint event for box selection overlay."""
+        if not self.is_box_selecting():
             return
         
-        # Calculate selection rectangle
-        x1 = min(self._box_start.x(), self._box_current.x())
-        y1 = min(self._box_start.y(), self._box_current.y())
-        x2 = max(self._box_start.x(), self._box_current.x())
-        y2 = max(self._box_start.y(), self._box_current.y())
-        selection_rect = QRect(x1, y1, x2 - x1, y2 - y1)
+        painter = QPainter(self._tile_container)
+        self.handle_box_selection_paint(painter)
+        painter.end()
+    
+    def _on_box_selection_updated(self):
+        """Called when box selection is updated."""
+        self._update_box_selection_units()
+    
+    def _update_box_selection_units(self):
+        """Update selected units based on current box selection rectangle."""
+        selection_rect = self.get_selection_rect()
+        if not selection_rect:
+            return
         
-        # Find all units whose tiles intersect with the selection rectangle
         selected_units = []
         seen_units = set()
         
         for btn in self._tile_buttons:
-            # Get button's geometry in container coordinates
             btn_rect = QRect(btn.pos(), btn.size())
             
-            # Check if button intersects with selection rectangle
             if selection_rect.intersects(btn_rect):
                 unit = btn.tile.unit
                 if unit and id(unit) not in seen_units:
                     selected_units.append(unit)
                     seen_units.add(id(unit))
         
-        # Update selection (filter to same source if units from multiple sources)
         if selected_units:
-            # Get the first source
             first_source = selected_units[0].source_path
-            # Filter to only units from the same source
             self._selected_units = [u for u in selected_units if u.source_path == first_source]
         else:
             self._selected_units = []
         
         self._update_selection_visuals()
         
-        # Emit signal if we have a selection
         if self._selected_units:
             self.unit_selected.emit(self._selected_units[0])
+    
+    def _update_box_selection(self):
+        """Backward compatibility wrapper for tests."""
+        self._update_box_selection_units()
 
