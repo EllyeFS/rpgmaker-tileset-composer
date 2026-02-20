@@ -24,6 +24,7 @@ from ..models import TILESET_TYPES
 from ..models.tile import Tile
 from ..services.image_loader import ImageLoader
 from .tile_palette import TilePalette
+from .tile_canvas import TileCanvas
 
 
 class MainWindow(QMainWindow):
@@ -122,13 +123,11 @@ class MainWindow(QMainWindow):
         self.tile_palette.tile_selected.connect(self._on_tile_selected)
         splitter.addWidget(self.tile_palette)
         
-        # Right panel - Target canvas (placeholder)
-        canvas_placeholder = QWidget()
-        canvas_layout = QVBoxLayout(canvas_placeholder)
-        canvas_layout.addWidget(QLabel("TARGET CANVAS"))
-        canvas_layout.addWidget(QLabel(f"(Ready for {self.target_type_combo.currentText()} tileset)"))
-        canvas_layout.addStretch()
-        splitter.addWidget(canvas_placeholder)
+        # Right panel - Target canvas
+        self.tile_canvas = TileCanvas()
+        self.tile_canvas.set_tileset_type_by_name(self.target_type_combo.currentText())
+        self.tile_canvas.cell_clicked.connect(self._on_canvas_cell_clicked)
+        splitter.addWidget(self.tile_canvas)
         
         # Set initial splitter sizes (palette needs ~500px for 8 columns)
         splitter.setSizes([500, 700])
@@ -289,10 +288,16 @@ class MainWindow(QMainWindow):
         )
     
     def _on_target_type_changed(self, type_name: str):
+        """Handle target tileset type change."""
         tileset_type = TILESET_TYPES[type_name]
+        self.tile_canvas.set_tileset_type(tileset_type)
         self.status_bar.showMessage(
             f"Target: {type_name} ({tileset_type.width}×{tileset_type.height} px)"
         )
+    
+    def _on_canvas_cell_clicked(self, grid_x: int, grid_y: int):
+        """Handle click on a canvas grid cell."""
+        self.status_bar.showMessage(f"Canvas cell clicked: ({grid_x}, {grid_y})")
     
     def _new_project(self):
         self.status_bar.showMessage("New project")
