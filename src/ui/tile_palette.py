@@ -50,25 +50,47 @@ class TileButton(QFrame):
     Shows a single 48×48 tile and emits a signal when clicked.
     The signal includes the tile's parent unit for group selection.
     Supports drag operations to move units to the canvas.
+    
+    Edge flags indicate which borders are on the unit boundary (strong borders).
     """
     
     clicked = Signal(Tile)
     
-    def __init__(self, tile: Tile, parent: Optional[QWidget] = None):
+    # Default border colors
+    DEFAULT_UNIT_BORDER = QColor("#000000")
+    DEFAULT_GRID_BORDER = QColor("#646464")
+    SELECTED_BORDER = QColor("#3498db")
+    
+    # Border thickness
+    STRONG_BORDER_WIDTH = 2  # Unit edges
+    LIGHT_BORDER_WIDTH = 1   # Internal edges
+    
+    def __init__(self, tile: Tile, edge_top: bool = True, edge_bottom: bool = True,
+                 edge_left: bool = True, edge_right: bool = True,
+                 unit_border_color: Optional[QColor] = None,
+                 grid_border_color: Optional[QColor] = None,
+                 parent: Optional[QWidget] = None):
         super().__init__(parent)
         self.tile = tile
         self._selected = False
         self._drag_start_pos: Optional[QPoint] = None
         
+        # Which edges are unit boundaries (get strong borders)
+        self._edge_top = edge_top
+        self._edge_bottom = edge_bottom
+        self._edge_left = edge_left
+        self._edge_right = edge_right
+        
+        # Border colors (use defaults if not specified)
+        self._unit_border_color = unit_border_color if unit_border_color else QColor(self.DEFAULT_UNIT_BORDER)
+        self._grid_border_color = grid_border_color if grid_border_color else QColor(self.DEFAULT_GRID_BORDER)
+        
         # All tiles are 48×48, plus border
         self.setFixedSize(TILE_SIZE + 2, TILE_SIZE + 2)
         
-        # Styling
-        self.setFrameStyle(QFrame.Shape.Box | QFrame.Shadow.Plain)
-        self.setLineWidth(1)
+        # Styling - no frame, we'll draw borders manually
+        self.setFrameStyle(QFrame.Shape.NoFrame)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        
-        self._update_style()
     
     @property
     def selected(self) -> bool:
@@ -77,14 +99,7 @@ class TileButton(QFrame):
     @selected.setter
     def selected(self, value: bool):
         self._selected = value
-        self._update_style()
         self.update()
-    
-    def _update_style(self):
-        if self._selected:
-            self.setStyleSheet("TileButton { border: 2px solid #3498db; }")
-        else:
-            self.setStyleSheet("TileButton { border: 1px solid #888; }")
     
     def paintEvent(self, event):
         super().paintEvent(event)
@@ -95,10 +110,38 @@ class TileButton(QFrame):
         y = (self.height() - TILE_SIZE) // 2
         painter.drawPixmap(x, y, self.tile.pixmap)
         
-        # Draw selection highlight
+        w = self.width()
+        h = self.height()
+        
         if self._selected:
-            painter.setPen(QPen(QColor("#3498db"), 2))
-            painter.drawRect(0, 0, self.width() - 1, self.height() - 1)
+            # Draw selection border
+            painter.setPen(QPen(self.SELECTED_BORDER, 2))
+            painter.drawRect(0, 0, w - 1, h - 1)
+        else:
+            # Draw borders with different thickness based on edge type
+            # Top border
+            color_top = self._unit_border_color if self._edge_top else self._grid_border_color
+            pen_top = QPen(color_top, self.STRONG_BORDER_WIDTH if self._edge_top else self.LIGHT_BORDER_WIDTH)
+            painter.setPen(pen_top)
+            painter.drawLine(0, 0, w - 1, 0)
+            
+            # Bottom border
+            color_bottom = self._unit_border_color if self._edge_bottom else self._grid_border_color
+            pen_bottom = QPen(color_bottom, self.STRONG_BORDER_WIDTH if self._edge_bottom else self.LIGHT_BORDER_WIDTH)
+            painter.setPen(pen_bottom)
+            painter.drawLine(0, h - 1, w - 1, h - 1)
+            
+            # Left border
+            color_left = self._unit_border_color if self._edge_left else self._grid_border_color
+            pen_left = QPen(color_left, self.STRONG_BORDER_WIDTH if self._edge_left else self.LIGHT_BORDER_WIDTH)
+            painter.setPen(pen_left)
+            painter.drawLine(0, 0, 0, h - 1)
+            
+            # Right border
+            color_right = self._unit_border_color if self._edge_right else self._grid_border_color
+            pen_right = QPen(color_right, self.STRONG_BORDER_WIDTH if self._edge_right else self.LIGHT_BORDER_WIDTH)
+            painter.setPen(pen_right)
+            painter.drawLine(w - 1, 0, w - 1, h - 1)
     
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
@@ -192,6 +235,10 @@ class TilePalette(QWidget):
         self._selected_unit: Optional[TileUnit] = None
         self._columns = 8  # Number of columns in the grid
         
+        # Grid colors for tile buttons
+        self._unit_border_color: QColor = QColor(TileButton.DEFAULT_UNIT_BORDER)
+        self._grid_border_color: QColor = QColor(TileButton.DEFAULT_GRID_BORDER)
+        
         self._setup_ui()
     
     def _setup_ui(self):
@@ -212,7 +259,8 @@ class TilePalette(QWidget):
         # Container for tile grid
         self._tile_container = QWidget()
         self._tile_layout = QGridLayout(self._tile_container)
-        self._tile_layout.setSpacing(1)
+        self._tile_layout.setSpacing(0)
+        self._tile_layout.setContentsMargins(0, 0, 0, 0)
         self._tile_layout.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
         self._scroll_area.setWidget(self._tile_container)
         
@@ -320,6 +368,26 @@ class TilePalette(QWidget):
         self._selected_unit = None
         self._rebuild_grid()
     
+    def set_unit_border_color(self, color: QColor):
+        """Set the color for unit boundary borders (thicker lines)."""
+        self._unit_border_color = QColor(color)
+        self._rebuild_grid()
+    
+    def set_grid_border_color(self, color: QColor):
+        """Set the color for internal grid borders (thinner lines)."""
+        self._grid_border_color = QColor(color)
+        self._rebuild_grid()
+    
+    @property
+    def unit_border_color(self) -> QColor:
+        """Get the current unit boundary border color."""
+        return self._unit_border_color
+    
+    @property
+    def grid_border_color(self) -> QColor:
+        """Get the current internal grid border color."""
+        return self._grid_border_color
+    
     def _rebuild_grid(self, progress_callback: Optional[Callable[[int, int], bool]] = None):
         """Rebuild the tile grid display.
         
@@ -390,11 +458,28 @@ class TilePalette(QWidget):
             for unit in source_units:
                 if cancelled:
                     break
+                
+                # Calculate unit bounds for edge detection
+                if unit.tiles:
+                    unit_min_x = min(t.x for t in unit.tiles)
+                    unit_max_x = max(t.x for t in unit.tiles)
+                    unit_min_y = min(t.y for t in unit.tiles)
+                    unit_max_y = max(t.y for t in unit.tiles)
+                else:
+                    unit_min_x = unit_max_x = unit_min_y = unit_max_y = 0
+                
                 for tile in unit.tiles:
                     display_col = tile.x // TILE_SIZE
                     display_row = tile.y // TILE_SIZE
                     
-                    btn = TileButton(tile)
+                    # Determine which edges are unit boundaries
+                    edge_top = tile.y == unit_min_y
+                    edge_bottom = tile.y == unit_max_y
+                    edge_left = tile.x == unit_min_x
+                    edge_right = tile.x == unit_max_x
+                    
+                    btn = TileButton(tile, edge_top, edge_bottom, edge_left, edge_right,
+                                     self._unit_border_color, self._grid_border_color)
                     btn.clicked.connect(self._on_tile_clicked)
                     self._tile_buttons.append(btn)
                     self._tile_layout.addWidget(btn, layout_row + display_row, display_col)

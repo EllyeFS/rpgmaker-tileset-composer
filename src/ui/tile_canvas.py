@@ -46,11 +46,9 @@ class TileCanvasWidget(QWidget):
     CHECKER_DARK = QColor(204, 204, 204)
     CHECKER_SIZE = 8  # Size of each checker square
     
-    # Grid line color
-    GRID_COLOR = QColor(100, 100, 100, 128)
-    
-    # Unit boundary grid line color (stronger)
-    UNIT_GRID_COLOR = QColor(60, 60, 60, 200)
+    # Default grid line colors
+    DEFAULT_GRID_COLOR = QColor("#646464")
+    DEFAULT_UNIT_GRID_COLOR = QColor("#000000")
     
     # Drop hover highlight color
     DROP_HIGHLIGHT_COLOR = QColor(52, 152, 219, 100)  # Semi-transparent blue
@@ -63,6 +61,10 @@ class TileCanvasWidget(QWidget):
         
         self._tileset_type: TilesetType = TILESET_TYPES["A5"]
         self._checker_pattern: QPixmap = self._create_checker_pattern()
+        
+        # Grid colors (instance variables for customization)
+        self._grid_color: QColor = QColor(self.DEFAULT_GRID_COLOR)
+        self._unit_grid_color: QColor = QColor(self.DEFAULT_UNIT_GRID_COLOR)
         
         # Cached unit positions for current tileset type
         self._unit_positions: list = []
@@ -110,6 +112,26 @@ class TileCanvasWidget(QWidget):
         self._update_unit_positions()
         self._update_size()
         self.update()
+    
+    def set_grid_color(self, color: QColor):
+        """Set the color for the regular grid lines."""
+        self._grid_color = QColor(color)
+        self.update()
+    
+    def set_unit_grid_color(self, color: QColor):
+        """Set the color for the unit boundary grid lines."""
+        self._unit_grid_color = QColor(color)
+        self.update()
+    
+    @property
+    def grid_color(self) -> QColor:
+        """Get the current grid color."""
+        return self._grid_color
+    
+    @property
+    def unit_grid_color(self) -> QColor:
+        """Get the current unit boundary grid color."""
+        return self._unit_grid_color
     
     def _update_unit_positions(self):
         """Update cached unit positions for current tileset type."""
@@ -203,7 +225,7 @@ class TileCanvasWidget(QWidget):
             painter.fillRect(px, py, pw, ph, self.DROP_HIGHLIGHT_COLOR)
         
         # Draw grid lines
-        pen = QPen(self.GRID_COLOR)
+        pen = QPen(self._grid_color)
         pen.setWidth(1)
         painter.setPen(pen)
         
@@ -217,7 +239,7 @@ class TileCanvasWidget(QWidget):
         
         # Draw stronger unit boundary lines
         unit_positions = get_unit_positions(self._tileset_type)
-        unit_pen = QPen(self.UNIT_GRID_COLOR)
+        unit_pen = QPen(self._unit_grid_color)
         unit_pen.setWidth(2)
         painter.setPen(unit_pen)
         
@@ -589,3 +611,21 @@ class TileCanvas(QScrollArea):
     def set_placed_units(self, placed_units: Dict[Tuple[int, int], TileUnit]):
         """Set the placed units dictionary."""
         self._canvas.set_placed_units(placed_units)
+    
+    def set_grid_color(self, color: QColor):
+        """Set the color for the regular grid lines."""
+        self._canvas.set_grid_color(color)
+    
+    def set_unit_grid_color(self, color: QColor):
+        """Set the color for the unit boundary grid lines."""
+        self._canvas.set_unit_grid_color(color)
+    
+    @property
+    def grid_color(self) -> QColor:
+        """Get the current grid color."""
+        return self._canvas.grid_color
+    
+    @property
+    def unit_grid_color(self) -> QColor:
+        """Get the current unit boundary grid color."""
+        return self._canvas.unit_grid_color
