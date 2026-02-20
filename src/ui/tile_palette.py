@@ -75,6 +75,29 @@ def tiles_to_units(tiles: List[Tile]) -> List[TileUnit]:
     
     return units
 
+
+class TileContainerWidget(QWidget):
+    """
+    Container widget for tile buttons with box selection overlay support.
+    
+    This custom widget properly handles painting the box selection overlay
+    by overriding paintEvent.
+    """
+    
+    def __init__(self, palette: 'TilePalette', parent: Optional[QWidget] = None):
+        super().__init__(parent)
+        self._palette = palette
+    
+    def paintEvent(self, event):
+        """Paint the widget and box selection overlay if active."""
+        super().paintEvent(event)
+        
+        # Draw box selection overlay if active
+        if self._palette.is_box_selecting():
+            painter = QPainter(self)
+            self._palette.handle_box_selection_paint(painter)
+            painter.end()
+
 class TileButton(QFrame):
     """
     A clickable tile display widget.
@@ -253,7 +276,7 @@ class TilePalette(QWidget, BoxSelectionMixin):
         self._scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         layout.addWidget(self._scroll_area)
         
-        self._tile_container = QWidget()
+        self._tile_container = TileContainerWidget(self)
         self._tile_container.setMouseTracking(True)
         self._tile_container.installEventFilter(self)
         self._tile_layout = QGridLayout(self._tile_container)
@@ -495,8 +518,6 @@ class TilePalette(QWidget, BoxSelectionMixin):
             return self._handle_box_move(obj, event)
         elif event.type() == QEvent.Type.MouseButtonRelease:
             return self._handle_box_release(event)
-        elif event.type() == QEvent.Type.Paint:
-            self._handle_box_paint()
         
         return super().eventFilter(obj, event)
     
@@ -526,15 +547,6 @@ class TilePalette(QWidget, BoxSelectionMixin):
             self._tile_container.update()
             return True
         return False
-    
-    def _handle_box_paint(self):
-        """Handle paint event for box selection overlay."""
-        if not self.is_box_selecting():
-            return
-        
-        painter = QPainter(self._tile_container)
-        self.handle_box_selection_paint(painter)
-        painter.end()
     
     def _on_box_selection_updated(self):
         """Called when box selection is updated."""
