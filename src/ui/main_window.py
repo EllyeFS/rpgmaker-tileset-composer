@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QStatusBar,
     QMenuBar,
     QMenu,
+    QMessageBox,
 )
 from PySide6.QtCore import Qt
 
@@ -138,6 +139,27 @@ class MainWindow(QMainWindow):
     def _load_tiles_from_folder(self, folder: str):
         """Load all tiles from the selected folder."""
         try:
+            # Check file count first
+            image_files = ImageLoader.find_images_in_folder(folder)
+            file_count = len(image_files)
+            
+            if file_count > 10:
+                reply = QMessageBox.warning(
+                    self,
+                    "Large Number of Files",
+                    f"This folder contains {file_count} image files.\n\n"
+                    f"Loading many tileset images at once may cause the application "
+                    f"to freeze or crash due to high memory usage.\n\n"
+                    f"It's recommended to organize your tiles into smaller folders "
+                    f"(10 or fewer files each).\n\n"
+                    f"Do you want to continue anyway?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No
+                )
+                if reply != QMessageBox.StandardButton.Yes:
+                    self.status_bar.showMessage("Folder loading cancelled")
+                    return
+            
             tiles = ImageLoader.load_folder_as_simple_tiles(folder)
             self.tile_palette.set_tiles(tiles)
             self.status_bar.showMessage(f"Loaded {len(tiles)} tiles from {folder}")
