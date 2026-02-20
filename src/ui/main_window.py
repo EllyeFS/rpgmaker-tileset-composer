@@ -15,6 +15,8 @@ from PySide6.QtWidgets import (
     QMenu,
     QMessageBox,
     QCheckBox,
+    QProgressDialog,
+    QApplication,
 )
 from PySide6.QtCore import Qt
 
@@ -171,7 +173,35 @@ class MainWindow(QMainWindow):
                     self.status_bar.showMessage("Folder loading cancelled")
                     return
             
-            tiles = ImageLoader.load_folder_as_simple_tiles(folder)
+            # Create progress dialog
+            progress = QProgressDialog(
+                "Loading images...", "Cancel", 0, file_count, self
+            )
+            progress.setWindowTitle("Loading")
+            progress.setWindowModality(Qt.WindowModality.WindowModal)
+            progress.setMinimumDuration(0)  # Show immediately
+            progress.setValue(0)
+            
+            cancelled = False
+            
+            def update_progress(current: int, total: int):
+                nonlocal cancelled
+                progress.setValue(current)
+                progress.setLabelText(f"Loading image {current + 1} of {total}...")
+                QApplication.processEvents()
+                if progress.wasCanceled():
+                    cancelled = True
+            
+            tiles = ImageLoader.load_folder_as_simple_tiles(
+                folder, progress_callback=update_progress
+            )
+            
+            progress.close()
+            
+            if cancelled:
+                self.status_bar.showMessage("Folder loading cancelled")
+                return
+            
             if self.append_checkbox.isChecked():
                 self.tile_palette.prepend_tiles(tiles)
                 self.status_bar.showMessage(f"Added {len(tiles)} tiles from {folder}")
@@ -213,7 +243,35 @@ class MainWindow(QMainWindow):
                     self.status_bar.showMessage("Image loading cancelled")
                     return
             
-            tiles = ImageLoader.load_images_as_simple_tiles(image_paths)
+            # Create progress dialog
+            progress = QProgressDialog(
+                "Loading images...", "Cancel", 0, file_count, self
+            )
+            progress.setWindowTitle("Loading")
+            progress.setWindowModality(Qt.WindowModality.WindowModal)
+            progress.setMinimumDuration(0)  # Show immediately
+            progress.setValue(0)
+            
+            cancelled = False
+            
+            def update_progress(current: int, total: int):
+                nonlocal cancelled
+                progress.setValue(current)
+                progress.setLabelText(f"Loading image {current + 1} of {total}...")
+                QApplication.processEvents()
+                if progress.wasCanceled():
+                    cancelled = True
+            
+            tiles = ImageLoader.load_images_as_simple_tiles(
+                image_paths, progress_callback=update_progress
+            )
+            
+            progress.close()
+            
+            if cancelled:
+                self.status_bar.showMessage("Image loading cancelled")
+                return
+            
             if self.append_checkbox.isChecked():
                 self.tile_palette.prepend_tiles(tiles)
                 self.status_bar.showMessage(f"Added {len(tiles)} tiles from {file_count} image(s)")

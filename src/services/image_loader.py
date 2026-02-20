@@ -7,7 +7,7 @@ larger units (2×2, 2×3, etc.).
 """
 
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Callable, List, Optional, Tuple
 
 from PySide6.QtGui import QImage
 
@@ -235,16 +235,28 @@ class ImageLoader:
         return sorted(images)
     
     @classmethod
-    def load_folder_as_simple_tiles(cls, folder_path: str) -> List[Tile]:
+    def load_folder_as_simple_tiles(
+        cls,
+        folder_path: str,
+        progress_callback: Optional[Callable[[int, int], None]] = None,
+    ) -> List[Tile]:
         """
         Load all images in a folder as simple 48×48 tile grids.
+        
+        Args:
+            folder_path: Path to folder containing images.
+            progress_callback: Optional callback(current, total) for progress updates.
         
         Returns:
             List of all tiles from all images in the folder.
         """
         all_tiles = []
+        image_paths = cls.find_images_in_folder(folder_path)
+        total = len(image_paths)
         
-        for image_path in cls.find_images_in_folder(folder_path):
+        for i, image_path in enumerate(image_paths):
+            if progress_callback:
+                progress_callback(i, total)
             try:
                 tiles = cls.load_tiles_from_image(image_path)
                 all_tiles.extend(tiles)
@@ -252,22 +264,33 @@ class ImageLoader:
                 # Skip files that fail to load
                 continue
         
+        if progress_callback:
+            progress_callback(total, total)
+        
         return all_tiles
     
     @classmethod
-    def load_images_as_simple_tiles(cls, image_paths: List[str]) -> List[Tile]:
+    def load_images_as_simple_tiles(
+        cls,
+        image_paths: List[str],
+        progress_callback: Optional[Callable[[int, int], None]] = None,
+    ) -> List[Tile]:
         """
         Load specific images as simple 48×48 tile grids.
         
         Args:
             image_paths: List of paths to image files.
+            progress_callback: Optional callback(current, total) for progress updates.
         
         Returns:
             List of all tiles from the specified images.
         """
         all_tiles = []
+        total = len(image_paths)
         
-        for image_path in image_paths:
+        for i, image_path in enumerate(image_paths):
+            if progress_callback:
+                progress_callback(i, total)
             try:
                 tiles = cls.load_tiles_from_image(image_path)
                 all_tiles.extend(tiles)
@@ -275,19 +298,34 @@ class ImageLoader:
                 # Skip files that fail to load
                 continue
         
+        if progress_callback:
+            progress_callback(total, total)
+        
         return all_tiles
     
     @classmethod
-    def load_units_from_folder(cls, folder_path: str) -> List[TileUnit]:
+    def load_units_from_folder(
+        cls,
+        folder_path: str,
+        progress_callback: Optional[Callable[[int, int], None]] = None,
+    ) -> List[TileUnit]:
         """
         Load all images in a folder as tile units.
+        
+        Args:
+            folder_path: Path to folder containing images.
+            progress_callback: Optional callback(current, total) for progress updates.
         
         Returns:
             List of all units from all images in the folder.
         """
         all_units: List[TileUnit] = []
+        image_paths = cls.find_images_in_folder(folder_path)
+        total = len(image_paths)
         
-        for image_path in cls.find_images_in_folder(folder_path):
+        for i, image_path in enumerate(image_paths):
+            if progress_callback:
+                progress_callback(i, total)
             try:
                 units = cls.load_units_from_image(image_path)
                 all_units.extend(units)
@@ -295,27 +333,41 @@ class ImageLoader:
                 # Skip files that fail to load
                 continue
         
+        if progress_callback:
+            progress_callback(total, total)
+        
         return all_units
     
     @classmethod
-    def load_units_from_images(cls, image_paths: List[str]) -> List[TileUnit]:
+    def load_units_from_images(
+        cls,
+        image_paths: List[str],
+        progress_callback: Optional[Callable[[int, int], None]] = None,
+    ) -> List[TileUnit]:
         """
         Load specific images as tile units.
         
         Args:
             image_paths: List of paths to image files.
+            progress_callback: Optional callback(current, total) for progress updates.
         
         Returns:
             List of all units from the specified images.
         """
         all_units: List[TileUnit] = []
+        total = len(image_paths)
         
-        for image_path in image_paths:
+        for i, image_path in enumerate(image_paths):
+            if progress_callback:
+                progress_callback(i, total)
             try:
                 units = cls.load_units_from_image(image_path)
                 all_units.extend(units)
             except ValueError:
                 # Skip files that fail to load
                 continue
+        
+        if progress_callback:
+            progress_callback(total, total)
         
         return all_units
