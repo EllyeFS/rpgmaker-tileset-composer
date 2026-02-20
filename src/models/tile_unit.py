@@ -5,8 +5,13 @@ For simple tiles (A5, B-E): unit contains a single tile.
 For autotiles (A2-A4): unit contains multiple tiles that form the unit.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from typing import List, Tuple, TYPE_CHECKING
+
+from PySide6.QtGui import QPixmap, QPainter
+from PySide6.QtCore import Qt, QPoint
 
 if TYPE_CHECKING:
     from .tile import Tile
@@ -78,16 +83,13 @@ class TileUnit:
         max_y = max(t.y for t in self.tiles)
         return (min_x, min_y, max_x, max_y)
     
-    def to_pixmap(self) -> "QPixmap":
+    def to_pixmap(self) -> QPixmap:
         """
         Create a QPixmap showing the complete unit.
         
         Returns:
             QPixmap with all tiles composited at their relative positions.
         """
-        from PySide6.QtGui import QPixmap, QPainter
-        from PySide6.QtCore import Qt
-        
         pixmap = QPixmap(self.pixel_width, self.pixel_height)
         pixmap.fill(Qt.GlobalColor.transparent)
         
@@ -103,3 +105,53 @@ class TileUnit:
             painter.end()
         
         return pixmap
+
+
+def create_composite_drag_pixmap(units: List[TileUnit], clicked_unit: TileUnit) -> Tuple[QPixmap, QPoint]:
+    """Create a composite pixmap for dragging multiple units.
+    
+    Args:
+        units: List of TileUnit objects to include in the composite.
+        clicked_unit: The unit that was actually clicked (determines hotspot).
+        
+    Returns:
+        Tuple of (composite_pixmap, hotspot_point).
+    """
+    from ..utils.constants import TILE_SIZE
+    
+    if not units:
+        raise ValueError("Cannot create composite pixmap from empty unit list")
+    
+    if len(units) == 1:
+        # Single unit - simple case
+        return units[0].to_pixmap(), QPoint(TILE_SIZE // 2, TILE_SIZE // 2)
+    
+    # Multiple units - create composite pixmap
+    # Find bounding box based on grid positions
+    min_x = min(u.grid_x * TILE_SIZE for u in units)
+    min_y = min(u.grid_y * TILE_SIZE for u in units)
+    max_x = max(u.grid_x * TILE_SIZE for u in units)
+    max_y = max(u.grid_y * TILE_SIZE for u in units)
+    
+    width = max_x - min_x + TILE_SIZE
+    height = max_y - min_y + TILE_SIZE
+    
+    # Create composite pixmap
+    pixmap = QPixmap(width, height)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    
+    painter = QPainter(pixmap)
+    for unit in units:
+        unit_pixmap = unit.to_pixmap()
+        x = unit.grid_x * TILE_SIZE - min_x
+        y = unit.grid_y * TILE_SIZE - min_y
+        painter.drawPixmap(x, y, unit_pixmap)
+    painter.end()
+    
+    # Calculate hotspot at clicked unit's position within the composite
+    hotspot = QPoint(
+        clicked_unit.grid_x * TILE_SIZE - min_x + TILE_SIZE // 2,
+        clicked_unit.grid_y * TILE_SIZE - min_y + TILE_SIZE // 2
+    )
+    
+    return pixmap, hotspot

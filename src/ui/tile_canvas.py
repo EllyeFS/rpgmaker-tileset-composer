@@ -7,7 +7,7 @@ from PySide6.QtCore import Qt, Signal, QPoint, QMimeData
 from PySide6.QtGui import QPainter, QColor, QPen, QBrush, QPixmap, QDrag
 
 from ..models.tileset_types import TilesetType, TILESET_TYPES, get_unit_positions
-from ..models.tile_unit import TileUnit
+from ..models.tile_unit import TileUnit, create_composite_drag_pixmap
 from ..utils.constants import TILE_SIZE, TILE_UNIT_MIME_TYPE
 
 
@@ -400,41 +400,8 @@ class TileCanvasWidget(QWidget):
         self._selected_positions.clear()  # Clear selection when dragging
         self.update()
         
-        # Create drag pixmap (composite if multiple units)
-        if len(drag_units) == 1:
-            # Single unit - simple pixmap
-            drag_pixmap = drag_units[0].to_pixmap()
-            hotspot = QPoint(TILE_SIZE // 2, TILE_SIZE // 2)
-        else:
-            # Multiple units - create composite pixmap
-            # Find bounding box
-            min_x = min(pos[0] * TILE_SIZE for pos in drag_positions)
-            min_y = min(pos[1] * TILE_SIZE for pos in drag_positions)
-            max_x = max((pos[0] + self._placed_units.get(pos, drag_units[i]).grid_width) * TILE_SIZE 
-                       for i, pos in enumerate(drag_positions))
-            max_y = max((pos[1] + self._placed_units.get(pos, drag_units[i]).grid_height) * TILE_SIZE 
-                       for i, pos in enumerate(drag_positions))
-            
-            width = max_x - min_x
-            height = max_y - min_y
-            
-            # Create composite pixmap
-            drag_pixmap = QPixmap(width, height)
-            drag_pixmap.fill(Qt.GlobalColor.transparent)
-            
-            painter = QPainter(drag_pixmap)
-            for i, (pos, unit) in enumerate(zip(drag_positions, drag_units)):
-                unit_pixmap = unit.to_pixmap()
-                x = pos[0] * TILE_SIZE - min_x
-                y = pos[1] * TILE_SIZE - min_y
-                painter.drawPixmap(x, y, unit_pixmap)
-            painter.end()
-            
-            # Hotspot at the clicked unit's position within the composite
-            hotspot = QPoint(
-                clicked_pos[0] * TILE_SIZE - min_x + TILE_SIZE // 2,
-                clicked_pos[1] * TILE_SIZE - min_y + TILE_SIZE // 2
-            )
+        # Create drag pixmap using utility function
+        drag_pixmap, hotspot = create_composite_drag_pixmap(drag_units, clicked_unit)
         
         # Create drag object
         drag = QDrag(self)

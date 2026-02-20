@@ -356,8 +356,8 @@ class TestTilePaletteMultiselect:
         palette._on_tile_clicked(unit1.tiles[0], Qt.KeyboardModifier.NoModifier)
         assert len(palette._selected_units) == 2
     
-    def test_get_draggable_units_filters_1x1_only(self, qtbot):
-        """get_draggable_units returns only 1x1 units."""
+    def test_get_draggable_units_includes_all_sizes(self, qtbot):
+        """get_draggable_units returns units of any size from same source."""
         palette = TilePalette()
         qtbot.addWidget(palette)
         
@@ -372,14 +372,14 @@ class TestTilePaletteMultiselect:
         # Get draggable units for a 1x1 unit
         draggable = palette.get_draggable_units(unit_1x1_a)
         
-        # Should only include the 1x1 units
-        assert len(draggable) == 2
+        # Should include all units (no size restriction)
+        assert len(draggable) == 3
         assert unit_1x1_a in draggable
         assert unit_1x1_b in draggable
-        assert unit_2x2 not in draggable
+        assert unit_2x2 in draggable
     
-    def test_get_draggable_units_non_1x1_returns_self(self, qtbot):
-        """get_draggable_units with non-1x1 clicked unit returns only that unit."""
+    def test_get_draggable_units_returns_all_selected(self, qtbot):
+        """get_draggable_units returns all selected units when clicked unit is selected."""
         palette = TilePalette()
         qtbot.addWidget(palette)
         
@@ -393,9 +393,10 @@ class TestTilePaletteMultiselect:
         # Get draggable units for the 2x2 unit
         draggable = palette.get_draggable_units(unit_2x2)
         
-        # Should only return the clicked 2x2 unit
-        assert len(draggable) == 1
-        assert draggable[0] is unit_2x2
+        # Should return both selected units
+        assert len(draggable) == 2
+        assert unit_1x1 in draggable
+        assert unit_2x2 in draggable
     
     def test_get_draggable_units_same_source_only(self, qtbot):
         """get_draggable_units filters to same source."""

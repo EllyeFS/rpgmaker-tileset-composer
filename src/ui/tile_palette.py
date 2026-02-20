@@ -21,7 +21,7 @@ from PySide6.QtCore import Qt, Signal, QMimeData, QPoint
 from PySide6.QtGui import QPainter, QPen, QColor, QDrag, QPixmap
 
 from ..models.tile import Tile
-from ..models.tile_unit import TileUnit
+from ..models.tile_unit import TileUnit, create_composite_drag_pixmap
 from ..utils.constants import TILE_SIZE, PROGRESS_REPORT_INTERVAL, TILE_UNIT_MIME_TYPE
 
 
@@ -194,45 +194,14 @@ class TileButton(QFrame):
             palette = palette.parent()
         
         if palette:
-            # Get draggable units (filtered to 1×1, same source)
+            # Get draggable units (filtered to same source)
             draggable_units = palette.get_draggable_units(unit)
         else:
             # Fallback if palette not found
             draggable_units = [unit]
         
-        # Create composite drag pixmap
-        if len(draggable_units) == 1:
-            # Single unit - use existing behavior
-            drag_pixmap = draggable_units[0].to_pixmap()
-            hotspot = QPoint(TILE_SIZE // 2, TILE_SIZE // 2)
-        else:
-            # Multiple units - create composite pixmap
-            # Find bounding box
-            min_x = min(u.grid_x * TILE_SIZE for u in draggable_units)
-            min_y = min(u.grid_y * TILE_SIZE for u in draggable_units)
-            max_x = max(u.grid_x * TILE_SIZE for u in draggable_units)
-            max_y = max(u.grid_y * TILE_SIZE for u in draggable_units)
-            
-            width = max_x - min_x + TILE_SIZE
-            height = max_y - min_y + TILE_SIZE
-            
-            # Create composite pixmap
-            drag_pixmap = QPixmap(width, height)
-            drag_pixmap.fill(Qt.GlobalColor.transparent)
-            
-            painter = QPainter(drag_pixmap)
-            for u in draggable_units:
-                u_pixmap = u.to_pixmap()
-                x = u.grid_x * TILE_SIZE - min_x
-                y = u.grid_y * TILE_SIZE - min_y
-                painter.drawPixmap(x, y, u_pixmap)
-            painter.end()
-            
-            # Hotspot at the clicked unit's position within the composite
-            hotspot = QPoint(
-                unit.grid_x * TILE_SIZE - min_x + TILE_SIZE // 2,
-                unit.grid_y * TILE_SIZE - min_y + TILE_SIZE // 2
-            )
+        # Create composite drag pixmap using utility function
+        drag_pixmap, hotspot = create_composite_drag_pixmap(draggable_units, unit)
         
         # Create drag object
         drag = QDrag(self)
@@ -526,23 +495,22 @@ class TilePalette(QWidget):
             btn.selected = (btn.tile.unit in self._selected_units)
     
     def get_draggable_units(self, clicked_unit: TileUnit) -> List[TileUnit]:
-        """Get units that can be dragged together (only 1×1 units).
+        """Get units that can be dragged together.
         
         Args:
             clicked_unit: The unit that was actually clicked/dragged
             
         Returns:
-            List of 1×1 units from the same source, or just the clicked unit if it's not 1×1
+            List of units from the same source, or just the clicked unit if none selected
         """
-        # If clicked unit is not 1×1, just drag it alone
-        if clicked_unit.grid_width != 1 or clicked_unit.grid_height != 1:
+        # If clicked unit is not in selection, drag it alone
+        if clicked_unit not in self._selected_units:
             return [clicked_unit]
         
-        # Filter selected units to only 1×1 from same source
+        # Filter selected units to only same source
         draggable = []
         for unit in self._selected_units:
-            if (unit.grid_width == 1 and unit.grid_height == 1 and 
-                unit.source_path == clicked_unit.source_path):
+            if unit.source_path == clicked_unit.source_path:
                 draggable.append(unit)
         
         return draggable if draggable else [clicked_unit]
