@@ -50,7 +50,7 @@ pytest
 To create a standalone Windows executable:
 
 ```powershell
-pyinstaller --onefile --windowed --name "Tileset Composer" src/main.py
+pyinstaller --onefile --windowed --name "Tileset Composer" --paths . build_entry.py
 ```
 
 This creates `dist/Tileset Composer.exe`.
@@ -59,10 +59,11 @@ This creates `dist/Tileset Composer.exe`.
 - `--onefile`: Single .exe file (slower startup, easier distribution)
 - `--windowed`: No console window (for GUI apps)
 - `--name`: Sets the executable name
+- `--paths .`: Adds the project root to Python path for imports
 
 **Alternative (faster startup, folder distribution):**
 ```powershell
-pyinstaller --onedir --windowed --name "Tileset Composer" src/main.py
+pyinstaller --onedir --windowed --name "Tileset Composer" --paths . build_entry.py
 ```
 
 Creates `dist/Tileset Composer/` folder - zip the whole folder for distribution.
