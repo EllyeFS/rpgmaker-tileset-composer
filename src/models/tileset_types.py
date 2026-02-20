@@ -201,3 +201,50 @@ def get_unit_positions(tileset_type: TilesetType) -> List[Tuple[int, int, int, i
     
     return positions
 
+
+# Grouped types - types that share the same dimensions and are interchangeable
+# These are grouped for UI purposes (New dialog, target label, detection)
+TYPE_GROUPS = {
+    "A1/A2": ["A1", "A2"],  # 768×576 animated/ground autotiles
+    "B-E": ["B", "C", "D", "E"],  # 768×768 upper layer tiles
+}
+
+# Reverse mapping: individual type -> group name (if grouped)
+TYPE_TO_GROUP = {}
+for group_name, types in TYPE_GROUPS.items():
+    for t in types:
+        TYPE_TO_GROUP[t] = group_name
+
+# Canonical types for each group (used for actual canvas dimensions)
+GROUP_CANONICAL_TYPE = {
+    "A1/A2": "A2",  # Use A2 format for A1/A2 (simpler layout)
+    "B-E": "B",     # Use B for B-E (all identical)
+}
+
+# All selectable types for the UI (ungrouped + grouped)
+SELECTABLE_TYPES = ["A1/A2", "A3", "A4", "A5", "B-E"]
+
+
+def get_display_name(type_name: str) -> str:
+    """Get the display name for a type (grouped if applicable)."""
+    return TYPE_TO_GROUP.get(type_name, type_name)
+
+
+def get_canonical_type(type_or_group: str) -> str:
+    """Get the canonical individual type name for a type or group."""
+    if type_or_group in GROUP_CANONICAL_TYPE:
+        return GROUP_CANONICAL_TYPE[type_or_group]
+    return type_or_group
+
+
+def get_detection_message(type_name: str) -> str:
+    """Get a message describing the detected tileset type."""
+    if type_name in TYPE_TO_GROUP:
+        group = TYPE_TO_GROUP[type_name]
+        types = TYPE_GROUPS[group]
+        if len(types) == 2:
+            return f"{types[0]} or {types[1]}"
+        else:
+            return ", ".join(types[:-1]) + f" or {types[-1]}"
+    return type_name
+

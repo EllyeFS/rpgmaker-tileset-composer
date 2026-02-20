@@ -15,21 +15,28 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt
 
-from ..models.tileset_types import TILESET_TYPES
+from ..models.tileset_types import (
+    TILESET_TYPES,
+    SELECTABLE_TYPES,
+    get_canonical_type,
+    get_display_name,
+)
 
 
 class NewProjectDialog(QDialog):
     """Dialog for creating a new tileset project."""
     
-    def __init__(self, parent=None, current_type: str = "A5"):
+    def __init__(self, parent=None, current_type: str = "B"):
         super().__init__(parent)
-        self.setWindowTitle("New Tileset Project")
+        self.setWindowTitle("New Tileset")
         self.setModal(True)
         self.setMinimumWidth(350)
         
         self._selected_type: Optional[str] = None
         
-        self._setup_ui(current_type)
+        # Convert current type to display name for combo box
+        display_type = get_display_name(current_type)
+        self._setup_ui(display_type)
     
     def _setup_ui(self, current_type: str):
         layout = QVBoxLayout(self)
@@ -38,10 +45,11 @@ class NewProjectDialog(QDialog):
         info_group = QGroupBox("Tileset Type")
         info_layout = QFormLayout(info_group)
         
-        # Type selector
+        # Type selector - use grouped selectable types
         self.type_combo = QComboBox()
-        self.type_combo.addItems(TILESET_TYPES.keys())
-        self.type_combo.setCurrentText(current_type)
+        self.type_combo.addItems(SELECTABLE_TYPES)
+        if current_type in SELECTABLE_TYPES:
+            self.type_combo.setCurrentText(current_type)
         self.type_combo.currentTextChanged.connect(self._update_info)
         info_layout.addRow("Type:", self.type_combo)
         
@@ -70,38 +78,38 @@ class NewProjectDialog(QDialog):
     
     def _update_info(self, type_name: str):
         """Update the info display for the selected type."""
-        tileset_type = TILESET_TYPES.get(type_name)
+        # Get canonical type for dimensions
+        canonical = get_canonical_type(type_name)
+        tileset_type = TILESET_TYPES.get(canonical)
         if not tileset_type:
             return
         
         self.dimension_label.setText(f"{tileset_type.width} × {tileset_type.height} pixels")
         
-        # Type-specific descriptions
+        # Type-specific descriptions (using grouped names)
         descriptions = {
-            "A1": "Animated tiles (water, lava, waterfalls)",
-            "A2": "Ground autotiles (grass, dirt, sand)",
+            "A1/A2": "Animated/Ground autotiles (water, grass, dirt)",
             "A3": "Building autotiles (roofs, walls)",
             "A4": "Wall autotiles (cliffs, fences)",
             "A5": "Normal tiles (8×16 grid, no autotile)",
-            "B": "Upper layer tiles (16×16 grid)",
-            "C": "Upper layer tiles (16×16 grid)",
-            "D": "Upper layer tiles (16×16 grid)",
-            "E": "Upper layer tiles (16×16 grid)",
+            "B-E": "Upper layer tiles (16×16 grid)",
         }
         self.description_label.setText(descriptions.get(type_name, ""))
     
     def _on_accept(self):
         """Handle OK button."""
-        self._selected_type = self.type_combo.currentText()
+        # Return canonical type name for the selected group
+        selected = self.type_combo.currentText()
+        self._selected_type = get_canonical_type(selected)
         self.accept()
     
     @property
     def selected_type(self) -> Optional[str]:
-        """Get the selected tileset type name."""
+        """Get the selected tileset type name (canonical)."""
         return self._selected_type
     
     @classmethod
-    def get_tileset_type(cls, parent=None, current_type: str = "A5") -> Optional[str]:
+    def get_tileset_type(cls, parent=None, current_type: str = "B") -> Optional[str]:
         """
         Show the dialog and return the selected type.
         

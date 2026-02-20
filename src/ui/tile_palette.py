@@ -217,7 +217,7 @@ class TilePalette(QWidget):
         self._scroll_area.setWidget(self._tile_container)
         
         # Placeholder when no tiles loaded
-        self._placeholder = QLabel("Select a source folder\nto load tiles")
+        self._placeholder = QLabel("Open images or folders to display tile palette")
         self._placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._placeholder.setStyleSheet("color: #888; padding: 20px;")
         self._tile_layout.addWidget(self._placeholder, 0, 0)

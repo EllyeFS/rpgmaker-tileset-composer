@@ -412,6 +412,15 @@ class TileCanvasWidget(QWidget):
     def placed_unit_count(self) -> int:
         """Get the number of placed units."""
         return len(self._placed_units)
+    
+    def get_placed_units(self) -> Dict[Tuple[int, int], TileUnit]:
+        """Get a copy of the placed units dictionary."""
+        return dict(self._placed_units)
+    
+    def set_placed_units(self, placed_units: Dict[Tuple[int, int], TileUnit]):
+        """Set the placed units dictionary."""
+        self._placed_units = dict(placed_units)
+        self.update()
 
 
 class TileCanvas(QScrollArea):
@@ -476,3 +485,11 @@ class TileCanvas(QScrollArea):
     def clear(self):
         """Clear all placed units from the canvas."""
         self._canvas.clear()
+    
+    def get_placed_units(self) -> Dict[Tuple[int, int], TileUnit]:
+        """Get a copy of the placed units dictionary."""
+        return self._canvas.get_placed_units()
+    
+    def set_placed_units(self, placed_units: Dict[Tuple[int, int], TileUnit]):
+        """Set the placed units dictionary."""
+        self._canvas.set_placed_units(placed_units)

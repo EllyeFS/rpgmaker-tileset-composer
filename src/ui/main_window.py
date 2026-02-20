@@ -21,9 +21,11 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt
 
 from ..models import TILESET_TYPES
+from ..models.tileset_types import get_display_name
 from ..models.tile import Tile
 from ..models.tile_unit import TileUnit
 from ..services.image_loader import ImageLoader
+from ..services.project_serializer import load_image_as_project
 from .tile_palette import TilePalette
 from .tile_canvas import TileCanvas
 from .new_project_dialog import NewProjectDialog
@@ -47,9 +49,8 @@ class MainWindow(QMainWindow):
         
         # File menu
         file_menu = menu_bar.addMenu("&File")
-        file_menu.addAction("&New Project", self._new_project)
-        file_menu.addAction("&Open Project...", self._open_project)
-        file_menu.addAction("&Save Project", self._save_project)
+        file_menu.addAction("&New...", self._new_project)
+        file_menu.addAction("&Open Image...", self._open_image)
         file_menu.addSeparator()
         file_menu.addAction("&Export PNG...", self._export_png)
         file_menu.addSeparator()
@@ -108,9 +109,9 @@ class MainWindow(QMainWindow):
         # Target type display (read-only)
         toolbar_layout.addSpacing(10)
         toolbar_layout.addWidget(QLabel("Target:"))
-        self.target_type_label = QLabel("A5")
+        self.target_type_label = QLabel("B-E")
         self.target_type_label.setStyleSheet("font-weight: bold;")
-        self._current_type_name = "A5"  # Track current type
+        self._current_type_name = "B"  # Track current type
         toolbar_layout.addWidget(self.target_type_label)
         
         toolbar_layout.addStretch()
@@ -299,10 +300,11 @@ class MainWindow(QMainWindow):
         """Set the target tileset type (internal)."""
         tileset_type = TILESET_TYPES[type_name]
         self._current_type_name = type_name
-        self.target_type_label.setText(type_name)
+        display_name = get_display_name(type_name)
+        self.target_type_label.setText(display_name)
         self.tile_canvas.set_tileset_type(tileset_type)
         self.status_bar.showMessage(
-            f"Target: {type_name} ({tileset_type.width}×{tileset_type.height} px)"
+            f"Target: {display_name} ({tileset_type.width}×{tileset_type.height} px)"
         )
     
     def _on_canvas_cell_clicked(self, grid_x: int, grid_y: int):
@@ -339,13 +341,56 @@ class MainWindow(QMainWindow):
         
         if selected_type:
             self._set_target_type(selected_type)
-            self.status_bar.showMessage(f"New {selected_type} project created")
+            self.status_bar.showMessage(f"New {selected_type} tileset created")
     
-    def _open_project(self):
-        self.status_bar.showMessage("Open project...")
-    
-    def _save_project(self):
-        self.status_bar.showMessage("Save project...")
+    def _open_image(self):
+        """Open an existing tileset image onto the canvas."""
+        # Warn if canvas is not empty
+        if not self.tile_canvas.is_empty():
+            reply = QMessageBox.question(
+                self,
+                "Open Image",
+                "Opening an image will replace the current canvas.\n\nContinue?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+        
+        filepath, _ = QFileDialog.getOpenFileName(
+            self,
+            "Open Tileset Image",
+            "",
+            "PNG Images (*.png);;All Files (*)"
+        )
+        
+        if not filepath:
+            return
+        
+        try:
+            tileset_type, placed_units, detection_msg = load_image_as_project(filepath)
+            self._set_target_type(tileset_type)
+            self.tile_canvas.set_placed_units(placed_units)
+            unit_count = len(placed_units)
+            
+            # Show detection result dialog
+            QMessageBox.information(
+                self,
+                "Image Loaded",
+                f"Tileset type detected: {detection_msg}",
+                QMessageBox.StandardButton.Ok
+            )
+            
+            self.status_bar.showMessage(
+                f"Opened {detection_msg} tileset: {unit_count} units"
+            )
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Error Opening Image",
+                f"Failed to open image:\n{str(e)}",
+                QMessageBox.StandardButton.Ok
+            )
     
     def _export_png(self):
         """Export the current canvas as a PNG file."""
