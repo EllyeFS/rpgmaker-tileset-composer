@@ -17,8 +17,8 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QApplication,
 )
-from PySide6.QtCore import Qt, Signal, QMimeData, QPoint
-from PySide6.QtGui import QPainter, QPen, QColor, QDrag, QPixmap
+from PySide6.QtCore import Qt, Signal, QMimeData, QPoint, QRect, QEvent
+from PySide6.QtGui import QPainter, QPen, QColor, QDrag, QPixmap, QBrush
 
 from ..models.tile import Tile
 from ..models.tile_unit import TileUnit, create_composite_drag_pixmap
@@ -165,6 +165,7 @@ class TileButton(QFrame):
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
             self._drag_start_pos = event.position().toPoint()
+            # Emit clicked signal (but note: won't start drag if Ctrl held - see mouseMoveEvent)
             self.clicked.emit(self.tile, event.modifiers())
         super().mousePressEvent(event)
     
@@ -246,6 +247,11 @@ class TilePalette(QWidget):
         self._unit_border_color: QColor = QColor(TileButton.DEFAULT_UNIT_BORDER)
         self._grid_border_color: QColor = QColor(TileButton.DEFAULT_GRID_BORDER)
         
+        # Box selection state
+        self._box_selecting: bool = False
+        self._box_start: Optional[QPoint] = None
+        self._box_current: Optional[QPoint] = None
+        
         self._setup_ui()
     
     def _setup_ui(self):
@@ -265,6 +271,8 @@ class TilePalette(QWidget):
         
         # Container for tile grid
         self._tile_container = QWidget()
+        self._tile_container.setMouseTracking(True)
+        self._tile_container.installEventFilter(self)  # Capture mouse events for box select
         self._tile_layout = QGridLayout(self._tile_container)
         self._tile_layout.setSpacing(0)
         self._tile_layout.setContentsMargins(0, 0, 0, 0)
@@ -421,6 +429,7 @@ class TilePalette(QWidget):
                     btn = TileButton(tile, edge_top, edge_bottom, edge_left, edge_right,
                                      self._unit_border_color, self._grid_border_color)
                     btn.clicked.connect(self._on_tile_clicked)
+                    btn.installEventFilter(self)  # Install filter for box selection
                     self._tile_buttons.append(btn)
                     self._tile_layout.addWidget(btn, layout_row + display_row, display_col)
                     
@@ -524,4 +533,116 @@ class TilePalette(QWidget):
     def selected_units(self) -> List[TileUnit]:
         """Get all currently selected units."""
         return self._selected_units
+    
+    def eventFilter(self, obj: QWidget, event: QEvent) -> bool:
+        """Handle mouse events on tile container and buttons for box selection."""
+        # Only handle events from tile container or tile buttons
+        if obj is not self._tile_container and not isinstance(obj, TileButton):
+            return super().eventFilter(obj, event)
+        
+        if event.type() == QEvent.Type.MouseButtonPress:
+            if event.button() == Qt.MouseButton.LeftButton:
+                if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+                    # Start box selection
+                    self._box_selecting = True
+                    # Get position relative to tile container
+                    if isinstance(obj, TileButton):
+                        # Convert from button coordinates to container coordinates
+                        self._box_start = obj.mapTo(self._tile_container, event.pos())
+                    else:
+                        self._box_start = event.pos()
+                    self._box_current = self._box_start
+                    self._tile_container.update()
+                    # Don't consume event from buttons yet - let toggle selection happen
+                    return False
+        
+        elif event.type() == QEvent.Type.MouseMove:
+            if self._box_selecting:
+                # Update box selection
+                if isinstance(obj, TileButton):
+                    # Convert from button coordinates to container coordinates
+                    self._box_current = obj.mapTo(self._tile_container, event.pos())
+                else:
+                    self._box_current = event.pos()
+                self._update_box_selection()
+                self._tile_container.update()
+                # Once we start dragging, consume the event to prevent tile drag
+                return True
+        
+        elif event.type() == QEvent.Type.MouseButtonRelease:
+            if event.button() == Qt.MouseButton.LeftButton and self._box_selecting:
+                # Finish box selection
+                self._box_selecting = False
+                self._box_start = None
+                self._box_current = None
+                self._tile_container.update()
+                return True
+        
+        elif event.type() == QEvent.Type.Paint:
+            # Draw selection box overlay
+            if self._box_selecting and self._box_start and self._box_current:
+                painter = QPainter(self._tile_container)
+                
+                # Calculate selection rectangle
+                x1 = min(self._box_start.x(), self._box_current.x())
+                y1 = min(self._box_start.y(), self._box_current.y())
+                x2 = max(self._box_start.x(), self._box_current.x())
+                y2 = max(self._box_start.y(), self._box_current.y())
+                rect = QRect(x1, y1, x2 - x1, y2 - y1)
+                
+                # Draw semi-transparent fill
+                fill_color = QColor(135, 206, 250, 60)  # Light blue, semi-transparent
+                painter.fillRect(rect, fill_color)
+                
+                # Draw border
+                border_color = QColor(135, 206, 250, 180)  # Light blue, more opaque
+                pen = QPen(border_color, 2)
+                painter.setPen(pen)
+                painter.drawRect(rect)
+                
+                painter.end()
+        
+        return super().eventFilter(obj, event)
+    
+    def _update_box_selection(self):
+        """Update selected units based on current box selection rectangle."""
+        if not self._box_start or not self._box_current:
+            return
+        
+        # Calculate selection rectangle
+        x1 = min(self._box_start.x(), self._box_current.x())
+        y1 = min(self._box_start.y(), self._box_current.y())
+        x2 = max(self._box_start.x(), self._box_current.x())
+        y2 = max(self._box_start.y(), self._box_current.y())
+        selection_rect = QRect(x1, y1, x2 - x1, y2 - y1)
+        
+        # Find all units whose tiles intersect with the selection rectangle
+        selected_units = []
+        seen_units = set()
+        
+        for btn in self._tile_buttons:
+            # Get button's geometry in container coordinates
+            btn_rect = QRect(btn.pos(), btn.size())
+            
+            # Check if button intersects with selection rectangle
+            if selection_rect.intersects(btn_rect):
+                unit = btn.tile.unit
+                if unit and id(unit) not in seen_units:
+                    selected_units.append(unit)
+                    seen_units.add(id(unit))
+        
+        # Update selection (filter to same source if units from multiple sources)
+        if selected_units:
+            # Get the first source
+            first_source = selected_units[0].source_path
+            # Filter to only units from the same source
+            self._selected_units = [u for u in selected_units if u.source_path == first_source]
+        else:
+            self._selected_units = []
+        
+        self._update_selection_visuals()
+        
+        # Emit signal if we have a selection
+        if self._selected_units:
+            self.unit_selected.emit(self._selected_units[0])
 
