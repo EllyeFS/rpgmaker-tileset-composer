@@ -12,6 +12,16 @@ from PySide6.QtGui import QImage
 from src.ui.main_window import MainWindow
 
 
+def _count_tiles(palette):
+    """Helper to count total tiles in palette (from all units)."""
+    return sum(len(unit.tiles) for unit in palette._units)
+
+
+def _get_tiles(palette):
+    """Helper to get all tiles from palette (from all units)."""
+    return [tile for unit in palette._units for tile in unit.tiles]
+
+
 class TestFolderLoadingWarning:
     """Tests for the large folder warning dialog."""
     
@@ -51,7 +61,7 @@ class TestFolderLoadingWarning:
             mock_warning.assert_not_called()
             
             # Tiles should be loaded
-            assert len(main_window.tile_palette._tiles) == 5
+            assert _count_tiles(main_window.tile_palette) == 5
     
     def test_large_folder_shows_warning(self, main_window, large_folder):
         """Folders with > 15 files should show a warning dialog."""
@@ -73,7 +83,7 @@ class TestFolderLoadingWarning:
             main_window._load_tiles_from_folder(large_folder)
             
             # Tiles should NOT be loaded
-            assert len(main_window.tile_palette._tiles) == 0
+            assert _count_tiles(main_window.tile_palette) == 0
     
     def test_large_folder_confirmed_loads_tiles(self, main_window, large_folder):
         """Clicking Yes on the warning should proceed with loading."""
@@ -81,7 +91,7 @@ class TestFolderLoadingWarning:
             main_window._load_tiles_from_folder(large_folder)
             
             # Tiles should be loaded
-            assert len(main_window.tile_palette._tiles) == 16
+            assert _count_tiles(main_window.tile_palette) == 16
     
     def test_exactly_15_files_no_warning(self, main_window, qapp):
         """Exactly 15 files should not trigger the warning (threshold is > 15)."""
@@ -95,7 +105,7 @@ class TestFolderLoadingWarning:
                 main_window._load_tiles_from_folder(tmpdir)
                 
                 mock_warning.assert_not_called()
-                assert len(main_window.tile_palette._tiles) == 15
+                assert _count_tiles(main_window.tile_palette) == 15
     
     def test_exactly_16_files_shows_warning(self, main_window, qapp):
         """16 files should trigger the warning (threshold is > 15)."""
@@ -133,7 +143,7 @@ class TestLoadMultipleImages:
                 main_window._load_tiles_from_images([image_path])
                 
                 mock_warning.assert_not_called()
-                assert len(main_window.tile_palette._tiles) == 1
+                assert _count_tiles(main_window.tile_palette) == 1
     
     def test_load_multiple_images(self, main_window, qapp):
         """Loading multiple images should combine their tiles."""
@@ -149,7 +159,7 @@ class TestLoadMultipleImages:
             main_window._load_tiles_from_images(paths)
             
             # 3 images × 4 tiles each = 12 tiles
-            assert len(main_window.tile_palette._tiles) == 12
+            assert _count_tiles(main_window.tile_palette) == 12
     
     def test_load_more_than_15_images_shows_warning(self, main_window, qapp):
         """Loading more than 15 images should show warning."""
@@ -166,7 +176,7 @@ class TestLoadMultipleImages:
                 main_window._load_tiles_from_images(paths)
                 
                 mock_warning.assert_called_once()
-                assert len(main_window.tile_palette._tiles) == 16
+                assert _count_tiles(main_window.tile_palette) == 16
     
     def test_cancel_large_image_load(self, main_window, qapp):
         """Cancelling large image load should not load tiles."""
@@ -182,7 +192,7 @@ class TestLoadMultipleImages:
             with patch.object(QMessageBox, 'warning', return_value=QMessageBox.StandardButton.No):
                 main_window._load_tiles_from_images(paths)
                 
-                assert len(main_window.tile_palette._tiles) == 0
+                assert _count_tiles(main_window.tile_palette) == 0
 
 
 class TestAppendToPalette:
@@ -206,7 +216,7 @@ class TestAppendToPalette:
             
             main_window.append_checkbox.setChecked(False)
             main_window._load_tiles_from_images([path1])
-            assert len(main_window.tile_palette._tiles) == 1
+            assert _count_tiles(main_window.tile_palette) == 1
             
             # Load second batch - should replace
             path2 = os.path.join(tmpdir, "tile2.png")
@@ -215,7 +225,7 @@ class TestAppendToPalette:
             image2.save(path2, "PNG")
             
             main_window._load_tiles_from_images([path2])
-            assert len(main_window.tile_palette._tiles) == 4
+            assert _count_tiles(main_window.tile_palette) == 4
     
     def test_append_checked_adds_to_top(self, main_window, qapp):
         """With append checked, loading should prepend new tiles."""
@@ -228,8 +238,9 @@ class TestAppendToPalette:
             
             main_window.append_checkbox.setChecked(False)
             main_window._load_tiles_from_images([path1])
-            assert len(main_window.tile_palette._tiles) == 1
-            first_tile_source = main_window.tile_palette._tiles[0].source_name
+            assert _count_tiles(main_window.tile_palette) == 1
+            tiles = _get_tiles(main_window.tile_palette)
+            first_tile_source = tiles[0].source_name
             
             # Load second batch with append checked
             path2 = os.path.join(tmpdir, "second.png")
@@ -241,12 +252,13 @@ class TestAppendToPalette:
             main_window._load_tiles_from_images([path2])
             
             # Should have 5 tiles total (1 + 4)
-            assert len(main_window.tile_palette._tiles) == 5
+            assert _count_tiles(main_window.tile_palette) == 5
             
             # New tiles should be at the top (prepended)
-            assert main_window.tile_palette._tiles[0].source_name == "second.png"
+            tiles = _get_tiles(main_window.tile_palette)
+            assert tiles[0].source_name == "second.png"
             # Old tile should still be there at the end
-            assert main_window.tile_palette._tiles[4].source_name == "first.png"
+            assert tiles[4].source_name == "first.png"
     
     def test_append_works_with_folder_loading(self, main_window, qapp):
         """Append should also work when loading from folder."""
@@ -260,7 +272,7 @@ class TestAppendToPalette:
             # Load it first
             main_window.append_checkbox.setChecked(False)
             main_window._load_tiles_from_folder(tmpdir)
-            initial_count = len(main_window.tile_palette._tiles)
+            initial_count = _count_tiles(main_window.tile_palette)
             
             # Create second folder
             tmpdir2 = tempfile.mkdtemp()
@@ -275,7 +287,7 @@ class TestAppendToPalette:
                 main_window._load_tiles_from_folder(tmpdir2)
                 
                 # Should have combined tiles
-                assert len(main_window.tile_palette._tiles) == initial_count + 4
+                assert _count_tiles(main_window.tile_palette) == initial_count + 4
             finally:
                 shutil.rmtree(tmpdir2)
 
@@ -300,14 +312,14 @@ class TestDuplicateTileBehavior:
             # Load first time
             main_window.append_checkbox.setChecked(False)
             main_window._load_tiles_from_images([path])
-            assert len(main_window.tile_palette._tiles) == 1
+            assert _count_tiles(main_window.tile_palette) == 1
             
             # Load same image again with append
             main_window.append_checkbox.setChecked(True)
             main_window._load_tiles_from_images([path])
             
             # Duplicates should be skipped
-            assert len(main_window.tile_palette._tiles) == 1
+            assert _count_tiles(main_window.tile_palette) == 1
     
     def test_different_images_with_append_adds_all(self, main_window, qapp):
         """Loading different images with append should add all of them."""
@@ -325,14 +337,14 @@ class TestDuplicateTileBehavior:
             # Load first image
             main_window.append_checkbox.setChecked(False)
             main_window._load_tiles_from_images([path1])
-            assert len(main_window.tile_palette._tiles) == 1
+            assert _count_tiles(main_window.tile_palette) == 1
             
             # Load different image with append
             main_window.append_checkbox.setChecked(True)
             main_window._load_tiles_from_images([path2])
             
             # Both should be present
-            assert len(main_window.tile_palette._tiles) == 2
+            assert _count_tiles(main_window.tile_palette) == 2
     
     def test_mixed_new_and_existing_images(self, main_window, qapp):
         """Loading a mix of new and existing images should only add new ones."""
@@ -350,11 +362,11 @@ class TestDuplicateTileBehavior:
             # Load first image
             main_window.append_checkbox.setChecked(False)
             main_window._load_tiles_from_images([path1])
-            assert len(main_window.tile_palette._tiles) == 1
+            assert _count_tiles(main_window.tile_palette) == 1
             
             # Load both (one existing, one new) with append
             main_window.append_checkbox.setChecked(True)
             main_window._load_tiles_from_images([path1, path2])
             
             # Should have 2 tiles (existing + new, no duplicate of existing)
-            assert len(main_window.tile_palette._tiles) == 2
+            assert _count_tiles(main_window.tile_palette) == 2

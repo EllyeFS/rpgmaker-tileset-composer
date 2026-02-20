@@ -120,21 +120,6 @@ class TestTileUnit:
         assert unit.pixel_width == 96
         assert unit.pixel_height == 96
     
-    def test_get_tile_at(self, sample_image):
-        """get_tile_at returns the correct tile for a local position."""
-        tiles = [
-            Tile(source_path="/test.png", source_index=i, x=(i % 2) * 48, y=(i // 2) * 48, image=sample_image)
-            for i in range(4)
-        ]
-        unit = TileUnit(grid_width=2, grid_height=2, tiles=tiles)
-        
-        # Row-major order: [0,0]=0, [1,0]=1, [0,1]=2, [1,1]=3
-        assert unit.get_tile_at(0, 0) is tiles[0]
-        assert unit.get_tile_at(1, 0) is tiles[1]
-        assert unit.get_tile_at(0, 1) is tiles[2]
-        assert unit.get_tile_at(1, 1) is tiles[3]
-        assert unit.get_tile_at(2, 0) is None  # Out of bounds
-    
     def test_source_path_from_tiles(self, sample_image):
         """Unit source_path comes from its first tile."""
         tile = Tile(

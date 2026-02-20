@@ -198,7 +198,6 @@ class ImageLoader:
         
         return units
     
-    # Legacy method for backward compatibility - returns tiles from units
     @classmethod
     def load_tiles_from_image(
         cls,
@@ -206,10 +205,10 @@ class ImageLoader:
         tileset_type: Optional[TilesetType] = None,
     ) -> List[Tile]:
         """
-        Load an image and extract tiles from it.
+        Load an image and extract individual tiles from it.
         
-        This is a compatibility method that returns individual tiles.
-        For new code, prefer load_units_from_image.
+        Returns a flat list of all tiles. For grouped unit access,
+        use load_units_from_image instead.
         """
         units = cls.load_units_from_image(image_path, tileset_type)
         # Return all tiles from all units
@@ -269,43 +268,6 @@ class ImageLoader:
             progress_callback(total, total)
         
         return all_items
-    
-    @classmethod
-    def load_folder_as_simple_tiles(
-        cls,
-        folder_path: str,
-        progress_callback: Optional[Callable[[int, int], None]] = None,
-    ) -> List[Tile]:
-        """
-        Load all images in a folder as simple 48×48 tile grids.
-        
-        Args:
-            folder_path: Path to folder containing images.
-            progress_callback: Optional callback(current, total) for progress updates.
-        
-        Returns:
-            List of all tiles from all images in the folder.
-        """
-        image_paths = cls.find_images_in_folder(folder_path)
-        return cls._load_batch(image_paths, cls.load_tiles_from_image, progress_callback)
-    
-    @classmethod
-    def load_images_as_simple_tiles(
-        cls,
-        image_paths: List[str],
-        progress_callback: Optional[Callable[[int, int], None]] = None,
-    ) -> List[Tile]:
-        """
-        Load specific images as simple 48×48 tile grids.
-        
-        Args:
-            image_paths: List of paths to image files.
-            progress_callback: Optional callback(current, total) for progress updates.
-        
-        Returns:
-            List of all tiles from the specified images.
-        """
-        return cls._load_batch(image_paths, cls.load_tiles_from_image, progress_callback)
     
     @classmethod
     def load_units_from_folder(

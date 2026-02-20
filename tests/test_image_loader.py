@@ -117,12 +117,15 @@ class TestImageLoaderFolder:
         assert len(images) == 2
         assert all(p.endswith('.png') for p in images)
     
-    def test_load_folder_as_simple_tiles(self, temp_dir):
-        """Should load tiles from all images in folder."""
-        tiles = ImageLoader.load_folder_as_simple_tiles(temp_dir)
+    def test_load_folder_as_units(self, temp_dir):
+        """Should load units from all images in folder."""
+        units = ImageLoader.load_units_from_folder(temp_dir)
         
-        # Each 96x96 image has 4 tiles, 2 images = 8 tiles
-        assert len(tiles) == 8
+        # Each 96x96 image has 4 tiles in 4 units (1x1), 2 images = 8 units
+        assert len(units) == 8
+        # Count total tiles
+        total_tiles = sum(len(unit.tiles) for unit in units)
+        assert total_tiles == 8
     
     def test_empty_folder_returns_empty_list(self, temp_dir):
         """Empty folder should return empty list."""
@@ -132,8 +135,8 @@ class TestImageLoaderFolder:
         images = ImageLoader.find_images_in_folder(empty_dir)
         assert images == []
         
-        tiles = ImageLoader.load_folder_as_simple_tiles(empty_dir)
-        assert tiles == []
+        units = ImageLoader.load_units_from_folder(empty_dir)
+        assert units == []
     
     def test_nonexistent_folder_returns_empty_list(self, qapp):
         """Non-existent folder should return empty list."""

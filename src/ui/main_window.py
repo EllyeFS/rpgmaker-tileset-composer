@@ -145,7 +145,7 @@ class MainWindow(QMainWindow):
         
         # Left panel - Tile palette
         self.tile_palette = TilePalette()
-        self.tile_palette.tile_selected.connect(self._on_tile_selected)
+        self.tile_palette.unit_selected.connect(self._on_unit_selected)
         splitter.addWidget(self.tile_palette)
         
         # Right panel - Target canvas
@@ -177,9 +177,9 @@ class MainWindow(QMainWindow):
     def _load_tiles_from_folder(self, folder: str):
         """Load all tiles from the selected folder."""
         image_files = ImageLoader.find_images_in_folder(folder)
-        self._load_tiles(
+        self._load_units(
             image_paths=image_files,
-            load_func=lambda paths, cb: ImageLoader.load_folder_as_simple_tiles(folder, progress_callback=cb),
+            load_func=lambda paths, cb: ImageLoader.load_units_from_folder(folder, progress_callback=cb),
             source_description=folder,
             warning_context="folder",
         )
@@ -197,14 +197,14 @@ class MainWindow(QMainWindow):
     
     def _load_tiles_from_images(self, image_paths: list):
         """Load tiles from selected image files."""
-        self._load_tiles(
+        self._load_units(
             image_paths=image_paths,
-            load_func=lambda paths, cb: ImageLoader.load_images_as_simple_tiles(paths, progress_callback=cb),
+            load_func=lambda paths, cb: ImageLoader.load_units_from_images(paths, progress_callback=cb),
             source_description=f"{len(image_paths)} image(s)",
             warning_context="selection",
         )
     
-    def _load_tiles(
+    def _load_units(
         self,
         image_paths: list,
         load_func,
@@ -212,11 +212,11 @@ class MainWindow(QMainWindow):
         warning_context: str,
     ):
         """
-        Shared tile loading logic with progress dialog and warnings.
+        Shared unit loading logic with progress dialog and warnings.
         
         Args:
             image_paths: List of image paths to load.
-            load_func: Callable(paths, progress_callback) -> List[Tile]
+            load_func: Callable(paths, progress_callback) -> List[TileUnit]
             source_description: Text describing the source for status messages.
             warning_context: 'folder' or 'selection' for warning message variations.
         """
@@ -274,7 +274,7 @@ class MainWindow(QMainWindow):
                 if progress.wasCanceled():
                     cancelled = True
             
-            tiles = load_func(image_paths, update_progress)
+            units = load_func(image_paths, update_progress)
             
             if cancelled:
                 progress.close()
@@ -282,7 +282,8 @@ class MainWindow(QMainWindow):
                 return
             
             # Phase 2: Building palette grid
-            tile_count = len(tiles)
+            # Count total tiles for progress display
+            tile_count = sum(len(unit.tiles) for unit in units)
             progress.setLabelText("Building palette...")
             progress.setMaximum(tile_count)
             progress.setValue(0)
@@ -298,22 +299,25 @@ class MainWindow(QMainWindow):
                 return False
             
             if self.append_checkbox.isChecked():
-                self.tile_palette.prepend_tiles(tiles, palette_progress)
-                self.status_bar.showMessage(f"Added {len(tiles)} tiles from {source_description}")
+                self.tile_palette.prepend_units(units, palette_progress)
+                self.status_bar.showMessage(f"Added {tile_count} tiles ({len(units)} units) from {source_description}")
             else:
-                self.tile_palette.set_tiles(tiles, palette_progress)
-                self.status_bar.showMessage(f"Loaded {len(tiles)} tiles from {source_description}")
+                self.tile_palette.set_units(units, palette_progress)
+                self.status_bar.showMessage(f"Loaded {tile_count} tiles ({len(units)} units) from {source_description}")
             
             progress.close()
         except Exception as e:
-            self.status_bar.showMessage(f"Error loading tiles: {e}")
+            self.status_bar.showMessage(f"Error loading units: {e}")
     
-    def _on_tile_selected(self, tile: Tile):
-        """Handle tile selection from the palette."""
-        self.status_bar.showMessage(
-            f"Selected: {tile.source_name} [{tile.source_index}] "
-            f"({tile.width}×{tile.height}px)"
-        )
+    def _on_unit_selected(self, unit: TileUnit):
+        """Handle unit selection from the palette."""
+        # Get info from first tile in unit for display
+        first_tile = unit.tiles[0] if unit.tiles else None
+        if first_tile:
+            self.status_bar.showMessage(
+                f"Selected: {unit.source_name} [{first_tile.source_index}] "
+                f"({unit.pixel_width}×{unit.pixel_height}px, {len(unit.tiles)} tile(s))"
+            )
     
     def _set_target_type(self, type_name: str):
         """Set the target tileset type (internal)."""

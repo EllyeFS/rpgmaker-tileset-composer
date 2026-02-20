@@ -230,9 +230,6 @@ class TilePalette(QWidget):
     # Emits the selected unit when a tile is clicked
     unit_selected = Signal(TileUnit)
     
-    # Legacy signal for backward compatibility
-    tile_selected = Signal(Tile)
-    
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
         
@@ -301,30 +298,6 @@ class TilePalette(QWidget):
             self._units = new_units + self._units
             self._selected_unit = None
             self._rebuild_grid(progress_callback)
-    
-    # Legacy methods for backward compatibility
-    def set_tiles(self, tiles: List[Tile], progress_callback: Optional[Callable[[int, int], bool]] = None):
-        """Set tiles to display (legacy method - converts to units).
-        
-        Args:
-            tiles: List of Tile objects to display
-            progress_callback: Optional callback(current, total) that returns True if cancelled
-        """
-        self.set_units(tiles_to_units(tiles), progress_callback)
-    
-    def prepend_tiles(self, tiles: List[Tile], progress_callback: Optional[Callable[[int, int], bool]] = None):
-        """Add tiles to the top of the palette (legacy method).
-        
-        Args:
-            tiles: List of Tile objects to add
-            progress_callback: Optional callback(current, total) that returns True if cancelled
-        """
-        self.prepend_units(tiles_to_units(tiles), progress_callback)
-    
-    @property
-    def _tiles(self) -> List[Tile]:
-        """Get all tiles from all units (legacy property)."""
-        return [tile for unit in self._units for tile in unit.tiles]
     
     def clear(self):
         """Clear all units from the palette."""
@@ -481,19 +454,9 @@ class TilePalette(QWidget):
         
         self._selected_unit = unit
         self.unit_selected.emit(unit)
-        
-        # Also emit legacy signal with the clicked tile
-        self.tile_selected.emit(tile)
     
     @property
     def selected_unit(self) -> Optional[TileUnit]:
         """Get the currently selected unit."""
         return self._selected_unit
-    
-    @property
-    def selected_tile(self) -> Optional[Tile]:
-        """Get a tile from the selected unit (legacy property)."""
-        if self._selected_unit and self._selected_unit.tiles:
-            return self._selected_unit.tiles[0]
-        return None
 
