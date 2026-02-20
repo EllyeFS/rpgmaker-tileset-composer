@@ -320,11 +320,45 @@ class MainWindow(QMainWindow):
         self.status_bar.showMessage("Save project...")
     
     def _export_png(self):
+        """Export the current canvas as a PNG file."""
+        if self.tile_canvas.is_empty():
+            QMessageBox.warning(
+                self,
+                "Nothing to Export",
+                "The canvas is empty. Add some tiles before exporting.",
+                QMessageBox.StandardButton.Ok
+            )
+            return
+        
+        # Suggest a filename based on target type
+        target_type = self.target_type_combo.currentText()
+        suggested_name = f"Tileset_{target_type}.png"
+        
         filepath, _ = QFileDialog.getSaveFileName(
-            self, "Export Tileset", "", "PNG Images (*.png)"
+            self,
+            "Export Tileset",
+            suggested_name,
+            "PNG Images (*.png)"
         )
         if filepath:
-            self.status_bar.showMessage(f"Exported to: {filepath}")
+            # Ensure .png extension
+            if not filepath.lower().endswith('.png'):
+                filepath += '.png'
+            
+            # Render and save
+            pixmap = self.tile_canvas.render_to_image()
+            success = pixmap.save(filepath, "PNG")
+            
+            if success:
+                self.status_bar.showMessage(f"Exported to: {filepath}")
+            else:
+                QMessageBox.critical(
+                    self,
+                    "Export Failed",
+                    f"Failed to save image to:\n{filepath}",
+                    QMessageBox.StandardButton.Ok
+                )
+                self.status_bar.showMessage("Export failed")
     
     def _undo(self):
         self.status_bar.showMessage("Undo")
@@ -333,7 +367,21 @@ class MainWindow(QMainWindow):
         self.status_bar.showMessage("Redo")
     
     def _clear_canvas(self):
-        self.status_bar.showMessage("Canvas cleared")
+        """Clear all tiles from the canvas."""
+        if self.tile_canvas.is_empty():
+            self.status_bar.showMessage("Canvas is already empty")
+            return
+        
+        reply = QMessageBox.question(
+            self,
+            "Clear Canvas",
+            "Are you sure you want to clear all tiles from the canvas?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            self.tile_canvas.clear()
+            self.status_bar.showMessage("Canvas cleared")
     
     def _zoom_in(self):
         self.status_bar.showMessage("Zoom in")

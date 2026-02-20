@@ -377,6 +377,41 @@ class TileCanvasWidget(QWidget):
         """Remove all placed units from the canvas."""
         self._placed_units.clear()
         self.update()
+    
+    def render_to_image(self) -> QPixmap:
+        """
+        Render the canvas content to a QPixmap.
+        
+        Creates a transparent image with all placed tiles drawn.
+        This is used for PNG export.
+        
+        Returns:
+            QPixmap with the rendered tileset (transparent background).
+        """
+        width = self._tileset_type.width
+        height = self._tileset_type.height
+        
+        pixmap = QPixmap(width, height)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
+        
+        # Draw all placed units
+        for (grid_x, grid_y), unit in self._placed_units.items():
+            self._draw_unit(painter, unit, grid_x, grid_y)
+        
+        painter.end()
+        return pixmap
+    
+    def is_empty(self) -> bool:
+        """Check if the canvas has no placed units."""
+        return len(self._placed_units) == 0
+    
+    @property
+    def placed_unit_count(self) -> int:
+        """Get the number of placed units."""
+        return len(self._placed_units)
 
 
 class TileCanvas(QScrollArea):
@@ -429,3 +464,15 @@ class TileCanvas(QScrollArea):
     def tileset_type(self) -> TilesetType:
         """Get the current tileset type."""
         return self._canvas._tileset_type
+    
+    def render_to_image(self) -> QPixmap:
+        """Render the canvas to a QPixmap for export."""
+        return self._canvas.render_to_image()
+    
+    def is_empty(self) -> bool:
+        """Check if the canvas has no placed units."""
+        return self._canvas.is_empty()
+    
+    def clear(self):
+        """Clear all placed units from the canvas."""
+        self._canvas.clear()

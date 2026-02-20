@@ -261,3 +261,62 @@ class TestTilePlacement:
         canvas.set_tileset_type(TILESET_TYPES["B"])
         
         assert len(canvas._placed_units) == 0
+    
+    def test_is_empty(self, qtbot):
+        """is_empty returns correct state."""
+        canvas = TileCanvasWidget()
+        qtbot.addWidget(canvas)
+        
+        assert canvas.is_empty() is True
+        
+        unit = self._create_mock_unit(1, 1)
+        canvas.place_unit(unit, 0, 0)
+        
+        assert canvas.is_empty() is False
+        
+        canvas.clear()
+        
+        assert canvas.is_empty() is True
+    
+    def test_render_to_image_size(self, qtbot):
+        """render_to_image creates pixmap with correct dimensions."""
+        canvas = TileCanvasWidget()
+        qtbot.addWidget(canvas)
+        
+        # Default is A5: 384x768
+        pixmap = canvas.render_to_image()
+        assert pixmap.width() == 384
+        assert pixmap.height() == 768
+        
+        # Change to B: 768x768
+        canvas.set_tileset_type(TILESET_TYPES["B"])
+        pixmap = canvas.render_to_image()
+        assert pixmap.width() == 768
+        assert pixmap.height() == 768
+    
+    def test_render_to_image_transparent_when_empty(self, qtbot):
+        """Empty canvas renders as fully transparent."""
+        canvas = TileCanvasWidget()
+        qtbot.addWidget(canvas)
+        
+        pixmap = canvas.render_to_image()
+        image = pixmap.toImage()
+        
+        # Check that pixel at (0,0) is transparent
+        pixel = image.pixelColor(0, 0)
+        assert pixel.alpha() == 0
+    
+    def test_placed_unit_count(self, qtbot):
+        """placed_unit_count returns correct count."""
+        canvas = TileCanvasWidget()
+        qtbot.addWidget(canvas)
+        
+        assert canvas.placed_unit_count == 0
+        
+        unit1 = self._create_mock_unit(1, 1)
+        canvas.place_unit(unit1, 0, 0)
+        assert canvas.placed_unit_count == 1
+        
+        unit2 = self._create_mock_unit(1, 1)
+        canvas.place_unit(unit2, 1, 0)
+        assert canvas.placed_unit_count == 2
